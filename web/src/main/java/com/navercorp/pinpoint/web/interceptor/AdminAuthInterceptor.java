@@ -29,6 +29,7 @@ import org.springframework.web.servlet.handler.HandlerInterceptorAdapter;
 
 import java.io.IOException;
 import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 
 /**
  * FIXME temporary interceptor for admin operations.
@@ -37,11 +38,11 @@ import java.nio.charset.Charset;
  */
 public class AdminAuthInterceptor extends HandlerInterceptorAdapter {
 
-    private static final Charset UTF_8 = Charset.forName("UTF-8");
+    private static final Charset UTF_8 = StandardCharsets.UTF_8;
 
     private final Logger logger = LoggerFactory.getLogger(this.getClass());
     
-    @Value("#{pinpointWebProps['admin.password'] ?: ''}")
+    @Value("${admin.password:}")
     private String password;
     
     @Override

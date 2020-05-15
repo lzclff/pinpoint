@@ -20,13 +20,14 @@ import com.navercorp.pinpoint.thrift.dto.command.TRouteResult;
 import org.apache.thrift.TBase;
 
 /**
- * @Author Taejin Koo
+ * @author Taejin Koo
  */
 public interface PinpointRouteResponse {
 
     TRouteResult getRouteResult();
-
     TBase getResponse();
+    String getMessage();
+
     <R extends TBase> R getResponse(Class<R> clazz);
     <R extends TBase> R getResponse(Class<R> clazz, R defaultValue);
 

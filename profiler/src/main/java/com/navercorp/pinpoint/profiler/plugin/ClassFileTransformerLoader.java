@@ -20,9 +20,7 @@ import com.navercorp.pinpoint.bootstrap.config.ProfilerConfig;
 import com.navercorp.pinpoint.bootstrap.instrument.DynamicTransformTrigger;
 import com.navercorp.pinpoint.bootstrap.instrument.InstrumentContext;
 import com.navercorp.pinpoint.bootstrap.instrument.matcher.Matcher;
-import com.navercorp.pinpoint.bootstrap.instrument.matcher.Matchers;
-import com.navercorp.pinpoint.bootstrap.instrument.transformer.TransformCallback;
-import com.navercorp.pinpoint.profiler.util.JavaAssistUtils;
+import com.navercorp.pinpoint.common.util.Assert;
 
 import java.lang.instrument.ClassFileTransformer;
 import java.util.ArrayList;
@@ -39,38 +37,25 @@ public class ClassFileTransformerLoader {
     private final List<ClassFileTransformer> classTransformers = new ArrayList<ClassFileTransformer>();
 
     public ClassFileTransformerLoader(ProfilerConfig profilerConfig, DynamicTransformTrigger dynamicTransformTrigger) {
-        if (profilerConfig == null) {
-            throw new NullPointerException("profilerConfig must not be null");
-        }
-        if (dynamicTransformTrigger == null) {
-            throw new NullPointerException("dynamicTransformTrigger must not be null");
-        }
-        this.profilerConfig = profilerConfig;
-        this.dynamicTransformTrigger = dynamicTransformTrigger;
+        this.profilerConfig = Assert.requireNonNull(profilerConfig, "profilerConfig");
+        this.dynamicTransformTrigger = Assert.requireNonNull(dynamicTransformTrigger, "dynamicTransformTrigger");
     }
 
-    public void addClassFileTransformer(InstrumentContext instrumentContext, final String targetClassName, final TransformCallback transformCallback) {
-        if (targetClassName == null) {
-            throw new NullPointerException("targetClassName must not be null");
-        }
-        if (transformCallback == null) {
-            throw new NullPointerException("transformCallback must not be null");
-        }
+    public void addClassFileTransformer(InstrumentContext instrumentContext, final Matcher matcher, final TransformCallbackProvider transformCallbackProvider) {
+        Assert.requireNonNull(instrumentContext, "instrumentContext");
+        Assert.requireNonNull(transformCallbackProvider, "transformCallbackProvider");
 
-        final Matcher matcher = Matchers.newClassNameMatcher(JavaAssistUtils.javaNameToJvmName(targetClassName));
-        final MatchableClassFileTransformerGuardDelegate guard = new MatchableClassFileTransformerGuardDelegate(profilerConfig, instrumentContext, matcher, transformCallback);
+        final MatchableClassFileTransformer guard = new MatchableClassFileTransformerDelegate(profilerConfig, instrumentContext, matcher, transformCallbackProvider);
         classTransformers.add(guard);
     }
 
-    public void addClassFileTransformer(InstrumentContext instrumentContext, ClassLoader classLoader, String targetClassName, final TransformCallback transformCallback) {
-        if (targetClassName == null) {
-            throw new NullPointerException("targetClassName must not be null");
-        }
-        if (transformCallback == null) {
-            throw new NullPointerException("transformCallback must not be null");
-        }
 
-        final ClassFileTransformerGuardDelegate classFileTransformerGuardDelegate = new ClassFileTransformerGuardDelegate(profilerConfig, instrumentContext, transformCallback);
+
+    public void addClassFileTransformer(InstrumentContext instrumentContext, ClassLoader classLoader, String targetClassName, TransformCallbackProvider transformCallbackProvider) {
+        Assert.requireNonNull(targetClassName, "targetClassName");
+        Assert.requireNonNull(transformCallbackProvider, "transformCallbackProvider");
+
+        final ClassFileTransformerDelegate classFileTransformerGuardDelegate = new ClassFileTransformerDelegate(profilerConfig, instrumentContext, transformCallbackProvider);
 
         this.dynamicTransformTrigger.addClassFileTransformer(classLoader, targetClassName, classFileTransformerGuardDelegate);
     }

@@ -1,7 +1,7 @@
 package com.navercorp.pinpoint.profiler.instrument;
 
 import com.navercorp.pinpoint.bootstrap.config.ProfilerConfig;
-import com.navercorp.pinpoint.bootstrap.util.StringUtils;
+import com.navercorp.pinpoint.common.util.StringUtils;
 import com.navercorp.pinpoint.profiler.util.JavaAssistUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -42,7 +42,7 @@ public class ASMBytecodeDumpService implements BytecodeDumpService {
 
     public ASMBytecodeDumpService(ProfilerConfig profilerConfig) {
         if (profilerConfig == null) {
-            throw new NullPointerException("profilerConfig must not be null");
+            throw new NullPointerException("profilerConfig");
         }
 
         this.dumpBytecode = profilerConfig.readBoolean(BYTECODE_DUMP_BYTECODE, BYTECODE_DUMP_BYTECODE_DEFAULT_VALUE);
@@ -57,7 +57,7 @@ public class ASMBytecodeDumpService implements BytecodeDumpService {
         if (classNameList.isEmpty()) {
             return Collections.emptySet();
         } else {
-            final List<String> classList = StringUtils.splitAndTrim(classNameList, ",");
+            final List<String> classList = StringUtils.tokenizeToStringList(classNameList, ",");
             final List<String> classInternalNameList = toInternalNames(classList);
             return new HashSet<String>(classInternalNameList);
         }
@@ -65,7 +65,7 @@ public class ASMBytecodeDumpService implements BytecodeDumpService {
 
     public ASMBytecodeDumpService(boolean dumpBytecode, boolean dumpVerify, boolean dumpASM, List<String> classNameList) {
         if (classNameList == null) {
-            throw new NullPointerException("classNameList must not be null");
+            throw new NullPointerException("classNameList");
         }
 
         this.dumpBytecode = dumpBytecode;
@@ -88,7 +88,7 @@ public class ASMBytecodeDumpService implements BytecodeDumpService {
     @Override
     public void dumpBytecode(String dumpMessage, final String classInternalName, final byte[] bytes, ClassLoader classLoader) {
         if (classInternalName == null) {
-            throw new NullPointerException("classInternalName must not be null");
+            throw new NullPointerException("classInternalName");
         }
 
         if (!filterClassName(classInternalName)) {
@@ -104,8 +104,8 @@ public class ASMBytecodeDumpService implements BytecodeDumpService {
         if (dumpVerify) {
             if (classLoader == null) {
                 logger.debug("classLoader is null, classInternalName:{}", classInternalName);
-                classLoader = ClassLoader.getSystemClassLoader();
             }
+            classLoader = getClassLoader(classLoader);
             final String dumpVerify = this.disassembler.dumpVerify(bytes, classLoader);
             logger.info("{} class:{} verify:{}", dumpMessage, classInternalName, dumpVerify);
         }
@@ -114,6 +114,13 @@ public class ASMBytecodeDumpService implements BytecodeDumpService {
             final String dumpASM = this.disassembler.dumpASM(bytes);
             logger.info("{} class:{} asm:{}", dumpMessage, classInternalName, dumpASM);
         }
+    }
+
+    private static ClassLoader getClassLoader(ClassLoader classLoader) {
+        if (classLoader == null) {
+            return ClassLoader.getSystemClassLoader();
+        }
+        return classLoader;
     }
 
     private boolean filterClassName(String classInternalName) {

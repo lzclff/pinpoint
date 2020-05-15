@@ -49,32 +49,17 @@ public class AgentTimeHistogram {
     private final AgentHistogramList agentHistogramList;
 
     public AgentTimeHistogram(Application application, Range range) {
-        if (application == null) {
-            throw new NullPointerException("application must not be null");
-        }
-        if (range == null) {
-            throw new NullPointerException("range must not be null");
-        }
-        this.application = application;
-        this.range = range;
+        this.application = Objects.requireNonNull(application, "application");
+        this.range = Objects.requireNonNull(range, "range");
         this.window = new TimeWindow(range, TimeWindowDownSampler.SAMPLER);
         this.agentHistogramList = new AgentHistogramList();
     }
 
     public AgentTimeHistogram(Application application, Range range, AgentHistogramList agentHistogramList) {
-        if (application == null) {
-            throw new NullPointerException("application must not be null");
-        }
-        if (range == null) {
-            throw new NullPointerException("range must not be null");
-        }
-        if (agentHistogramList == null) {
-            throw new NullPointerException("agentHistogramList must not be null");
-        }
-        this.application = application;
-        this.range = range;
+        this.application = Objects.requireNonNull(application, "application");
+        this.range = Objects.requireNonNull(range, "range");
         this.window = new TimeWindow(range, TimeWindowDownSampler.SAMPLER);
-        this.agentHistogramList = agentHistogramList;
+        this.agentHistogramList = Objects.requireNonNull(agentHistogramList, "agentHistogramList");
     }
 
 
@@ -86,7 +71,7 @@ public class AgentTimeHistogram {
             AgentResponseTimeViewModel model = createAgentResponseTimeViewModel(agentId, timeList);
             result.add(model);
         }
-        Collections.sort(result, new Comparator<AgentResponseTimeViewModel>() {
+        result.sort(new Comparator<AgentResponseTimeViewModel>() {
             @Override
             public int compare(AgentResponseTimeViewModel o1, AgentResponseTimeViewModel o2) {
                 return o1.getAgentName().compareTo(o2.getAgentName());
@@ -97,7 +82,7 @@ public class AgentTimeHistogram {
 
     private List<TimeHistogram> sortTimeHistogram(Collection<TimeHistogram> timeMap) {
         List<TimeHistogram> timeList = new ArrayList<>(timeMap);
-        Collections.sort(timeList, TimeHistogram.TIME_STAMP_ASC_COMPARATOR);
+        timeList.sort(TimeHistogram.TIME_STAMP_ASC_COMPARATOR);
         return timeList;
     }
 

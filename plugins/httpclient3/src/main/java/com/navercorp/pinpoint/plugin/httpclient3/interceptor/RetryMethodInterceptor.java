@@ -18,11 +18,8 @@ package com.navercorp.pinpoint.plugin.httpclient3.interceptor;
 
 import com.navercorp.pinpoint.bootstrap.context.MethodDescriptor;
 import com.navercorp.pinpoint.bootstrap.context.SpanEventRecorder;
-import com.navercorp.pinpoint.bootstrap.context.Trace;
 import com.navercorp.pinpoint.bootstrap.context.TraceContext;
-import com.navercorp.pinpoint.bootstrap.interceptor.AroundInterceptor;
-import com.navercorp.pinpoint.bootstrap.logging.PLogger;
-import com.navercorp.pinpoint.bootstrap.logging.PLoggerFactory;
+import com.navercorp.pinpoint.bootstrap.interceptor.SpanEventSimpleAroundInterceptorForPlugin;
 import com.navercorp.pinpoint.common.trace.AnnotationKey;
 import com.navercorp.pinpoint.plugin.httpclient3.HttpClient3Constants;
 
@@ -30,65 +27,42 @@ import com.navercorp.pinpoint.plugin.httpclient3.HttpClient3Constants;
  * @author Minwoo Jung
  * @author jaehong.kim
  */
-public class RetryMethodInterceptor implements AroundInterceptor {
-
-    private final PLogger logger = PLoggerFactory.getLogger(this.getClass());
-    private final boolean isDebug = logger.isDebugEnabled();
-
-    private MethodDescriptor descriptor;
-    private TraceContext traceContext;
+public class RetryMethodInterceptor extends SpanEventSimpleAroundInterceptorForPlugin {
 
     public RetryMethodInterceptor(TraceContext context, MethodDescriptor methodDescriptor) {
-        this.traceContext = context;
-        this.descriptor = methodDescriptor;
+        super(context, methodDescriptor);
     }
-    
 
     @Override
-    public void before(Object target, Object[] args) {
-        if (isDebug) {
-            logger.beforeInterceptor(target, args);
-        }
-
-        Trace trace = traceContext.currentTraceObject();
-        if (trace == null) {
-            return;
-        }
-
-        final SpanEventRecorder recorder = trace.traceBlockBegin();
+    protected void doInBeforeTrace(SpanEventRecorder recorder, Object target, Object[] args) {
         recorder.recordServiceType(HttpClient3Constants.HTTP_CLIENT_3_INTERNAL);
     }
 
     @Override
-    public void after(Object target, Object[] args, Object result, Throwable throwable) {
-        if (isDebug) {
-            logger.afterInterceptor(target, args);
-        }
+    protected void doInAfterTrace(SpanEventRecorder recorder, Object target, Object[] args, Object result, Throwable throwable) {
+        recorder.recordApi(methodDescriptor);
+        recorder.recordException(throwable);
 
-        Trace trace = traceContext.currentTraceObject();
-        if (trace == null) {
-            return;
-        }
+        final String retryMessage = getRetryMessage(args);
+        recorder.recordAttribute(AnnotationKey.HTTP_INTERNAL_DISPLAY, retryMessage);
 
-        try {
-            final SpanEventRecorder recorder = trace.currentSpanEventRecorder();
-            recorder.recordApi(descriptor);
-            recorder.recordException(throwable);
-            
-            final StringBuilder sb = new StringBuilder();
-            if (args != null && args.length >= 2 && args[1] != null && args[1] instanceof Exception) {
-                sb.append(args[1].getClass().getName()).append(", ");
-            }
-            if (args != null && args.length >= 3 && args[2] != null && args[2] instanceof Integer) {
-                sb.append(args[2]);
-            }
-            recorder.recordAttribute(AnnotationKey.HTTP_INTERNAL_DISPLAY, sb.toString());
-
-            if (result != null) {
-                recorder.recordAttribute(AnnotationKey.RETURN_DATA, result);
-            }
-        } finally {
-            trace.traceBlockEnd();
+        if (result != null) {
+            recorder.recordAttribute(AnnotationKey.RETURN_DATA, result);
         }
     }
+
+    private String getRetryMessage(Object[] args) {
+        if (args == null) {
+            return "";
+        }
+        final StringBuilder sb = new StringBuilder();
+        if (args.length >= 2 && args[1] instanceof Exception) {
+            sb.append(args[1].getClass().getName()).append(", ");
+        }
+        if (args.length >= 3 && args[2] instanceof Integer) {
+            sb.append(args[2]);
+        }
+        return sb.toString();
+    }
+
 }

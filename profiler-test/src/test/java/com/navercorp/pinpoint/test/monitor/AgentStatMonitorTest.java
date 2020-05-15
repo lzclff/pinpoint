@@ -17,23 +17,16 @@
 
 package com.navercorp.pinpoint.test.monitor;
 
-import com.navercorp.pinpoint.bootstrap.config.DefaultProfilerConfig;
-import com.navercorp.pinpoint.bootstrap.config.ProfilerConfig;
-import com.navercorp.pinpoint.profiler.context.AtomicIdGenerator;
-import com.navercorp.pinpoint.profiler.context.DefaultTransactionCounter;
-import com.navercorp.pinpoint.profiler.context.TransactionCounter;
-import com.navercorp.pinpoint.profiler.context.active.ActiveTraceRepository;
-import com.navercorp.pinpoint.profiler.context.monitor.DatabaseInfoLocator;
-import com.navercorp.pinpoint.profiler.context.monitor.DefaultPluginMonitorContext;
-import com.navercorp.pinpoint.profiler.context.monitor.PluginMonitorContext;
 import com.navercorp.pinpoint.profiler.monitor.AgentStatMonitor;
 import com.navercorp.pinpoint.profiler.monitor.DefaultAgentStatMonitor;
-import com.navercorp.pinpoint.profiler.monitor.codahale.AgentStatCollectorFactory;
-import com.navercorp.pinpoint.profiler.monitor.codahale.DefaultAgentStatCollectorFactory;
+import com.navercorp.pinpoint.profiler.monitor.collector.AgentStatMetricCollector;
+import com.navercorp.pinpoint.profiler.monitor.metric.AgentStatMetricSnapshot;
+import com.navercorp.pinpoint.profiler.monitor.metric.AgentStatMetricSnapshotBatch;
 import com.navercorp.pinpoint.profiler.sender.DataSender;
 import com.navercorp.pinpoint.test.ListenableDataSender;
 import com.navercorp.pinpoint.test.TBaseRecorder;
 import com.navercorp.pinpoint.test.TBaseRecorderAdaptor;
+import com.navercorp.pinpoint.thrift.dto.TAgentStat;
 import com.navercorp.pinpoint.thrift.dto.TAgentStatBatch;
 import org.junit.Before;
 import org.junit.Test;
@@ -43,25 +36,27 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import static org.junit.Assert.assertTrue;
+import static org.mockito.Mockito.when;
 
 /**
- * @author hyungil.jeong
+ * @author HyunGil Jeong
  */
 public class AgentStatMonitorTest {
 
     private final Logger logger = LoggerFactory.getLogger(this.getClass());
 
-    private TBaseRecorder<TAgentStatBatch> tBaseRecorder;
+    private TBaseRecorder<AgentStatMetricSnapshotBatch> tBaseRecorder;
     private DataSender dataSender;
 
     @Mock
-    private DatabaseInfoLocator databaseInfoLocator;
+    private AgentStatMetricCollector<AgentStatMetricSnapshot> agentStatCollector;
 
     @Before
     public void setUp() throws Exception {
         MockitoAnnotations.initMocks(this);
+        when(agentStatCollector.collect()).thenReturn(new AgentStatMetricSnapshot());
 
-        this.tBaseRecorder = new TBaseRecorder<TAgentStatBatch>();
+        this.tBaseRecorder = new TBaseRecorder<AgentStatMetricSnapshotBatch>();
         TBaseRecorderAdaptor recorderAdaptor = new TBaseRecorderAdaptor(tBaseRecorder);
 
         ListenableDataSender listenableDataSender = new ListenableDataSender("testDataSender");
@@ -77,28 +72,16 @@ public class AgentStatMonitorTest {
         final int minNumBatchToTest = 2;
         final long totalTestDurationMs = collectionIntervalMs + collectionIntervalMs * numCollectionsPerBatch * minNumBatchToTest;
         // When
-        AgentStatCollectorFactory agentStatCollectorFactory = newAgentStatCollectorFactory();
-
         AgentStatMonitor monitor = new DefaultAgentStatMonitor(this.dataSender, "agentId", System.currentTimeMillis(),
-                agentStatCollectorFactory, collectionIntervalMs, numCollectionsPerBatch);
+                agentStatCollector, collectionIntervalMs, numCollectionsPerBatch);
         monitor.start();
         Thread.sleep(totalTestDurationMs);
         monitor.stop();
         // Then
         assertTrue(tBaseRecorder.size() >= minNumBatchToTest);
-        for (TAgentStatBatch agentStatBatch : tBaseRecorder) {
+        for (AgentStatMetricSnapshotBatch agentStatBatch : tBaseRecorder) {
             logger.debug("agentStatBatch:{}", agentStatBatch);
             assertTrue(agentStatBatch.getAgentStats().size() <= numCollectionsPerBatch);
         }
     }
-
-    private AgentStatCollectorFactory newAgentStatCollectorFactory() {
-        ProfilerConfig profilerConfig = new DefaultProfilerConfig();
-        ActiveTraceRepository activeTraceRepository = new ActiveTraceRepository();
-        AtomicIdGenerator idGenerator = new AtomicIdGenerator();
-        TransactionCounter transactionCounter = new DefaultTransactionCounter(idGenerator);
-        PluginMonitorContext pluginMonitorContext = new DefaultPluginMonitorContext();
-        return new DefaultAgentStatCollectorFactory(profilerConfig, activeTraceRepository, transactionCounter, pluginMonitorContext, databaseInfoLocator);
-    }
-
 }

@@ -1,11 +1,11 @@
 /*
- * Copyright 2014 NAVER Corp.
+ * Copyright 2018 NAVER Corp.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *     http://www.apache.org/licenses/LICENSE-2.0
+ * http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -22,140 +22,109 @@ import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 
-import org.apache.thrift.TBase;
-
 import com.navercorp.pinpoint.profiler.context.Span;
+import com.navercorp.pinpoint.profiler.context.SpanChunk;
 import com.navercorp.pinpoint.profiler.context.SpanEvent;
+import com.navercorp.pinpoint.profiler.context.id.TraceRoot;
 
 /**
  * @author Jongho Moon
  */
-public class OrderedSpanRecorder implements ListenableDataSender.Listener, Iterable<TBase<?, ?>> {
-    private static final int ROOT_SEQUENCE = -1;
-    private static final int ASYNC_ID_NOT_SET = -1;
+public class OrderedSpanRecorder implements ListenableDataSender.Listener<Object>, Iterable<Object> {
+    private static String LINE_SEPARATOR = System.getProperty("line.separator");
+    public static final int ROOT_SEQUENCE = -1;
+    public static final int ASYNC_ID_NOT_SET = -1;
+    public static final int ASYNC_SEQUENCE_NOT_SET = -1;
 
     private final List<Item> list = new ArrayList<Item>();
 
-    private static final class Item implements Comparable<Item> {
-
-
-        private final TBase<?, ?> value;
-        private final long time;
-        private final long spanId;
-        private final int sequence;
-        private final int asyncId;
-
-        public Item(TBase<?, ?> value, long time, long spanId, int sequence) {
-            this(value, time, spanId, sequence, ASYNC_ID_NOT_SET);
-        }
-
-        public Item(TBase<?, ?> value, long time, long spanId, int sequence, int asyncId) {
-            this.value = value;
-            this.time = time;
-            this.spanId = spanId;
-            this.sequence = sequence;
-            this.asyncId = asyncId;
-        }
-
-        @Override
-        public int compareTo(Item o) {
-            if (this.asyncId == ASYNC_ID_NOT_SET) {
-                if (o.asyncId == ASYNC_ID_NOT_SET) {
-                    // fall through
-                } else {
-                    return -1;
-                }
-            } else {
-                if (o.asyncId == ASYNC_ID_NOT_SET) {
-                    return 1;
-                } else {
-                    if (this.asyncId < o.asyncId) {
-                        return -1;
-                    } else if (this.asyncId > o.asyncId) {
-                        return 1;
-                    }
-
-                    // if both async events have the same asyncId, do normal event comparison
-                }
-            }
-
-
-            if (this.time < o.time) {
-                return -1;
-            } else if (this.time > o.time) {
-                return 1;
-            } else {
-                if (this.spanId < o.spanId) {
-                    return -1;
-                } else if (this.spanId > o.spanId) {
-                    return 1;
-                } else {
-                    if (this.sequence < o.sequence) {
-                        return -1;
-                    } else if (this.sequence > o.sequence) {
-                        return 1;
-                    } else {
-                        int h1 = System.identityHashCode(this.value);
-                        int h2 = System.identityHashCode(o.value);
-
-                        return h1 < h2 ? -1 : (h1 > h2 ? 1 : 0);
-                    }
-                }
-            }
-        }
+    public OrderedSpanRecorder() {
     }
 
+
     @Override
-    public synchronized boolean handleSend(TBase<?, ?> data) {
+    public synchronized boolean handleSend(Object data) {
+
         if (data instanceof Span) {
             insertSpan((Span) data);
             return true;
-        } else if (data instanceof SpanEvent) {
-            handleSpanEvent((SpanEvent) data);
+        }
+        if (data instanceof SpanChunk) {
+            handleSpanEvent((SpanChunk) data);
             return true;
         }
-
+//        throw new IllegalStateException("unknown data type:" + data);
         return false;
     }
 
+
     private void insertSpan(Span span) {
         long startTime = span.getStartTime();
-        long spanId = span.getSpanId();
+        TraceRoot traceRoot = span.getTraceRoot();
 
-        insertItem(new Item(span, startTime, spanId, ROOT_SEQUENCE));
+        Item item = new Item(span, startTime, traceRoot, ROOT_SEQUENCE);
+        insertItem(item);
     }
 
     private void insertItem(Item item) {
-        int pos = Collections.binarySearch(list, item);
+        synchronized (this) {
+            final int pos = Collections.binarySearch(list, item);
+            if (pos >= 0) {
+                throw new IllegalArgumentException("Duplicated?? list: " + list + ", item: " + item);
+            }
 
-        if (pos >= 0) {
-            throw new IllegalArgumentException("Duplicated?? list: " + list + ", item: " + item);
+            int index = -(pos + 1);
+            list.add(index, item);
+        }
+    }
+
+    private void handleSpanEvent(SpanChunk spanChunk) {
+        List<SpanEvent> spanEventList = spanChunk.getSpanEventList();
+        if (spanEventList.size() != 1) {
+            throw new IllegalStateException("spanEvent.size != 1");
         }
 
-        int index = -(pos + 1);
-        list.add(index, item);
+        final SpanEvent event = spanEventList.get(0);
+        long startTime = event.getStartTime();
+        Item item = new Item(spanChunk, startTime, spanChunk.getTraceRoot(), event.getSequence());
+        insertItem(item);
     }
 
-    private void handleSpanEvent(SpanEvent event) {
-        Span span = event.getSpan();
-        int asyncId = event.isSetAsyncId() ? event.getAsyncId() : ASYNC_ID_NOT_SET;
-        insertItem(new Item(event, span.getStartTime() + event.getStartElapsed(), span.getSpanId(), event.getSequence(), asyncId));
+    public synchronized Object pop() {
+        final Item item = popItem();
+        if (item == null) {
+            return null;
+        }
+        return item.getValue();
     }
 
-    public synchronized TBase<?, ?> pop() {
+    public synchronized Item popItem() {
         if (list.isEmpty()) {
             return null;
         }
 
-        return list.remove(0).value;
+        return list.remove(0);
     }
 
-    public synchronized void print(PrintStream out) {
-        out.println("TRACES(" + list.size() + "):");
-
-        for (TBase<?, ?> obj : this) {
-            out.println(obj);
+    public void print(PrintStream out) {
+        final StringBuilder buffer = new StringBuilder();
+        synchronized (this) {
+            appendln(buffer, "TRACES(" + list.size() + "):");
+            for (Item item : list) {
+                appendln(buffer, item);
+            }
+            for (Object obj : this) {
+                appendln(buffer, obj);
+            }
         }
+
+        out.print(buffer.toString());
+        out.flush();
+    }
+
+    private void appendln(StringBuilder buffer, Object object) {
+        buffer.append(object);
+        buffer.append(LINE_SEPARATOR);
     }
 
     public synchronized void clear() {
@@ -167,11 +136,11 @@ public class OrderedSpanRecorder implements ListenableDataSender.Listener, Itera
     }
 
     @Override
-    public synchronized Iterator<TBase<?, ?>> iterator() {
+    public synchronized Iterator<Object> iterator() {
         return new RecorderIterator();
     }
 
-    private final class RecorderIterator implements Iterator<TBase<?, ?>> {
+    private final class RecorderIterator implements Iterator<Object> {
         private int current = -1;
         private int index = 0;
 
@@ -183,11 +152,12 @@ public class OrderedSpanRecorder implements ListenableDataSender.Listener, Itera
         }
 
         @Override
-        public TBase<?, ?> next() {
+        public Object next() {
             synchronized (OrderedSpanRecorder.this) {
                 current = index;
                 index++;
-                return list.get(current).value;
+                Item item = list.get(current);
+                return item.getValue();
             }
         }
 
@@ -207,8 +177,12 @@ public class OrderedSpanRecorder implements ListenableDataSender.Listener, Itera
 
     @Override
     public String toString() {
+        String listString;
+        synchronized (this) {
+            listString = list.toString();
+        }
         return "OrderedSpanRecorder{" +
-                "list=" + list +
+                "list=" + listString +
                 '}';
     }
 }

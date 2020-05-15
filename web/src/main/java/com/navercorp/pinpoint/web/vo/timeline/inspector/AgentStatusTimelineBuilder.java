@@ -32,6 +32,7 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.PriorityQueue;
 import java.util.Queue;
 
@@ -58,11 +59,21 @@ public class AgentStatusTimelineBuilder {
     private final long timelineEndTimestamp;
     private final AgentState initialState;
 
-    private List<AgentEvent> agentEvents;
+    private final List<AgentEvent> agentEvents;
+    private final List<AgentStatusTimelineSegment> warningStatusTimelineSegmentList;
+
     private boolean hasOverlap = false;
 
     public AgentStatusTimelineBuilder(Range range, AgentStatus initialStatus) {
-        Assert.notNull(range, "range must not be null");
+        this(range, initialStatus, null);
+    }
+
+    public AgentStatusTimelineBuilder(Range range, AgentStatus initialStatus, List<AgentEvent> agentEvents) {
+        this(range, initialStatus, agentEvents, null);
+    }
+
+    public AgentStatusTimelineBuilder(Range range, AgentStatus initialStatus, List<AgentEvent> agentEvents, List<AgentStatusTimelineSegment> warningStatusTimelineSegmentList) {
+        Objects.requireNonNull(range, "range");
         Assert.isTrue(range.getRange() > 0, "timeline must have range greater than 0");
         timelineStartTimestamp = range.getFrom();
         timelineEndTimestamp = range.getTo();
@@ -71,23 +82,99 @@ public class AgentStatusTimelineBuilder {
         } else {
             initialState = AgentState.fromAgentLifeCycleState(initialStatus.getState());
         }
-    }
 
-    public AgentStatusTimelineBuilder from(List<AgentEvent> agentEvents) {
-        this.agentEvents = agentEvents;
-        return this;
+        if (agentEvents == null) {
+            this.agentEvents = Collections.emptyList();
+        } else {
+            this.agentEvents = Collections.unmodifiableList(agentEvents);
+        }
+
+        if (warningStatusTimelineSegmentList == null) {
+            this.warningStatusTimelineSegmentList = Collections.emptyList();
+        } else {
+            this.warningStatusTimelineSegmentList = Collections.unmodifiableList(warningStatusTimelineSegmentList);
+        }
     }
 
     public AgentStatusTimeline build() {
-        if (agentEvents == null) {
-            agentEvents = Collections.emptyList();
-        } else {
-            agentEvents = Collections.unmodifiableList(agentEvents);
-        }
-
         List<AgentStatusTimelineSegment> timelineSegments = createTimelineSegments(agentEvents);
 
-        return new AgentStatusTimeline(timelineSegments, hasOverlap);
+        if (com.navercorp.pinpoint.common.util.CollectionUtils.hasLength(warningStatusTimelineSegmentList)) {
+            List<AgentStatusTimelineSegment> timelineSegmentList = mergeTimelineSegment(timelineSegments, warningStatusTimelineSegmentList);
+            return new AgentStatusTimeline(timelineSegmentList, hasOverlap);
+        } else {
+            return new AgentStatusTimeline(timelineSegments, hasOverlap);
+        }
+    }
+
+    private List<AgentStatusTimelineSegment> mergeTimelineSegment(List<AgentStatusTimelineSegment> timelineSegments, List<AgentStatusTimelineSegment> warningStatusTimelineSegmentList) {
+        List<AgentStatusTimelineSegment> result = new ArrayList<>();
+
+        for (AgentStatusTimelineSegment segment : timelineSegments) {
+            long startTimestamp = segment.getStartTimestamp();
+            long endTimestamp = segment.getEndTimestamp();
+
+            if (segment.getValue() == AgentState.RUNNING) {
+                List<AgentStatusTimelineSegment> includedSegment = getIncludedSegment(startTimestamp, endTimestamp, warningStatusTimelineSegmentList);
+                if (com.navercorp.pinpoint.common.util.CollectionUtils.hasLength(includedSegment)) {
+                    List<AgentStatusTimelineSegment> newTimelineSegment = createNewTimelineSegment(segment, includedSegment);
+                    result.addAll(newTimelineSegment);
+                } else {
+                    result.add(segment);
+                }
+            } else {
+                result.add(segment);
+            }
+        }
+
+        return result;
+    }
+
+    private List<AgentStatusTimelineSegment> getIncludedSegment(long startTimestamp, long endTimestamp, List<AgentStatusTimelineSegment> warningStatusTimelineSegmentList) {
+        List<AgentStatusTimelineSegment> result = new ArrayList<>();
+
+        for (AgentStatusTimelineSegment agentStatusTimelineSegment : warningStatusTimelineSegmentList) {
+            if (agentStatusTimelineSegment.getStartTimestamp() < startTimestamp) {
+                continue;
+            }
+            if (agentStatusTimelineSegment.getEndTimestamp() > endTimestamp) {
+                continue;
+            }
+
+            result.add(agentStatusTimelineSegment);
+        }
+
+        return result;
+    }
+
+    private List<AgentStatusTimelineSegment> createNewTimelineSegment(AgentStatusTimelineSegment baseSegment, List<AgentStatusTimelineSegment> warningStatusTimelineSegmentList) {
+        List<AgentStatusTimelineSegment> result = new ArrayList<>();
+
+        long startTimestamp = baseSegment.getStartTimestamp();
+
+        for (AgentStatusTimelineSegment segment : warningStatusTimelineSegmentList) {
+            if (segment.getStartTimestamp() != startTimestamp) {
+                AgentStatusTimelineSegment newSegment = new AgentStatusTimelineSegment();
+                newSegment.setStartTimestamp(startTimestamp);
+                newSegment.setEndTimestamp(segment.getStartTimestamp());
+                newSegment.setValue(AgentState.RUNNING);
+
+                result.add(newSegment);
+            }
+
+            result.add(segment);
+            startTimestamp = segment.getEndTimestamp();
+        }
+
+        if (startTimestamp < baseSegment.getEndTimestamp()) {
+            AgentStatusTimelineSegment newSegment = new AgentStatusTimelineSegment();
+            newSegment.setStartTimestamp(startTimestamp);
+            newSegment.setEndTimestamp(baseSegment.getEndTimestamp());
+            newSegment.setValue(AgentState.RUNNING);
+            result.add(newSegment);
+        }
+
+        return result;
     }
 
     private List<AgentEvent> filterAgentEvents(AgentEventFilter agentEventFilter, List<AgentEvent> agentEvents) {
@@ -126,18 +213,15 @@ public class AgentStatusTimelineBuilder {
         Map<Long, List<AgentEvent>> partitions = new HashMap<>();
         for (AgentEvent agentEvent : agentEvents) {
             long startTimestamp = agentEvent.getStartTimestamp();
-            List<AgentEvent> partition = partitions.get(startTimestamp);
-            if (partition == null) {
-                partition = new ArrayList<>();
-                partitions.put(startTimestamp, partition);
-            }
+            List<AgentEvent> partition = partitions.computeIfAbsent(startTimestamp, k -> new ArrayList<>());
             partition.add(agentEvent);
         }
         return partitions;
     }
 
     private AgentLifeCycle createAgentLifeCycle(long agentStartTimestamp, List<AgentEvent> agentEvents) {
-        Collections.sort(agentEvents, AgentEvent.EVENT_TIMESTAMP_ASC_COMPARATOR);
+        agentEvents.sort(AgentEvent.EVENT_TIMESTAMP_ASC_COMPARATOR);
+
         AgentEvent first = agentEvents.get(0);
         AgentEvent last = agentEvents.get(agentEvents.size() - 1);
         AgentState endState = AgentState.fromAgentEvent(last);
@@ -153,7 +237,8 @@ public class AgentStatusTimelineBuilder {
     }
 
     private List<AgentLifeCycle> mergeOverlappingLifeCycles(List<AgentLifeCycle> agentLifeCycles) {
-        Collections.sort(agentLifeCycles, AgentLifeCycle.START_TIMESTAMP_ASC_COMPARATOR);
+        agentLifeCycles.sort(AgentLifeCycle.START_TIMESTAMP_ASC_COMPARATOR);
+
         Queue<AgentLifeCycle> mergedAgentLifeCycles = new PriorityQueue<>(agentLifeCycles.size(), AgentLifeCycle.START_TIMESTAMP_ASC_COMPARATOR);
         for (AgentLifeCycle agentLifeCycle : agentLifeCycles) {
             Iterator<AgentLifeCycle> mergedAgentLifeCyclesIterator = mergedAgentLifeCycles.iterator();
@@ -188,6 +273,7 @@ public class AgentStatusTimelineBuilder {
             AgentStatusTimelineSegment lifeCycleSegment = agentLifeCycle.toTimelineSegment();
             segments.add(lifeCycleSegment);
             fillerSegment = initializeFillerSegment(agentLifeCycle.getEndTimestamp(), agentLifeCycle.getEndState());
+
         }
         if (fillerSegment != null && fillerSegment.getStartTimestamp() < timelineEndTimestamp) {
             fillerSegment.setEndTimestamp(timelineEndTimestamp);
@@ -233,6 +319,15 @@ public class AgentStatusTimelineBuilder {
             this.endState = endState;
         }
 
+        private static AgentLifeCycle merge(AgentLifeCycle o1, AgentLifeCycle o2) {
+            long newStartTimestamp = Math.min(o1.getStartTimestamp(), o2.getStartTimestamp());
+            if (o1.getEndTimestamp() > o2.getEndTimestamp()) {
+                return new AgentLifeCycle(newStartTimestamp, o1.getEndTimestamp(), o1.getEndState());
+            } else {
+                return new AgentLifeCycle(newStartTimestamp, o2.getEndTimestamp(), o2.getEndState());
+            }
+        }
+
         private long getStartTimestamp() {
             return startTimestamp;
         }
@@ -272,14 +367,6 @@ public class AgentStatusTimelineBuilder {
             sb.append('}');
             return sb.toString();
         }
-
-        private static AgentLifeCycle merge(AgentLifeCycle o1, AgentLifeCycle o2) {
-            long newStartTimestamp = Math.min(o1.getStartTimestamp(), o2.getStartTimestamp());
-            if (o1.getEndTimestamp() > o2.getEndTimestamp()) {
-                return new AgentLifeCycle(newStartTimestamp, o1.getEndTimestamp(), o1.getEndState());
-            } else {
-                return new AgentLifeCycle(newStartTimestamp, o2.getEndTimestamp(), o2.getEndState());
-            }
-        }
     }
+
 }

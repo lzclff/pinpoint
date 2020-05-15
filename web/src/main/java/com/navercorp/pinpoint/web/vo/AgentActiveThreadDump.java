@@ -155,10 +155,10 @@ public class AgentActiveThreadDump {
 
         AgentActiveThreadDump build() {
             if (threadName == null) {
-                throw new NullPointerException("threadName may not be null");
+                throw new NullPointerException("threadName");
             }
             if (threadState == null) {
-                throw new NullPointerException("threadState may not be null");
+                throw new NullPointerException("threadState");
             }
 
             if (startTime <= 0) {
@@ -170,7 +170,7 @@ public class AgentActiveThreadDump {
             }
 
             if (detailMessage == null) {
-                throw new NullPointerException("detailMessage may not be null");
+                throw new NullPointerException("detailMessage");
             }
 
             return new AgentActiveThreadDump(this);

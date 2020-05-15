@@ -19,14 +19,15 @@ package com.navercorp.pinpoint.web.service.stat;
 import com.navercorp.pinpoint.web.dao.stat.SampledCpuLoadDao;
 import com.navercorp.pinpoint.web.util.TimeWindow;
 import com.navercorp.pinpoint.web.vo.stat.SampledCpuLoad;
-import com.navercorp.pinpoint.web.vo.stat.chart.AgentStatChartGroup;
-import com.navercorp.pinpoint.web.vo.stat.chart.CpuLoadChartGroup;
+import com.navercorp.pinpoint.web.vo.stat.chart.StatChart;
+import com.navercorp.pinpoint.web.vo.stat.chart.agent.CpuLoadChart;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 /**
  * @author HyunGil Jeong
@@ -36,29 +37,25 @@ public class CpuLoadChartService implements AgentStatChartService {
 
     private final SampledCpuLoadDao sampledCpuLoadDao;
 
-    @Autowired
     public CpuLoadChartService(@Qualifier("sampledCpuLoadDaoFactory") SampledCpuLoadDao sampledCpuLoadDao) {
-        this.sampledCpuLoadDao = sampledCpuLoadDao;
+        this.sampledCpuLoadDao = Objects.requireNonNull(sampledCpuLoadDao, "sampledCpuLoadDao");
     }
 
     @Override
-    public AgentStatChartGroup selectAgentChart(String agentId, TimeWindow timeWindow) {
-        if (agentId == null) {
-            throw new NullPointerException("agentId must not be null");
-        }
-        if (timeWindow == null) {
-            throw new NullPointerException("timeWindow must not be null");
-        }
+    public StatChart selectAgentChart(String agentId, TimeWindow timeWindow) {
+        Objects.requireNonNull(agentId, "agentId");
+        Objects.requireNonNull(timeWindow, "timeWindow");
+
         List<SampledCpuLoad> sampledCpuLoads = this.sampledCpuLoadDao.getSampledAgentStatList(agentId, timeWindow);
-        return new CpuLoadChartGroup(timeWindow, sampledCpuLoads);
+        return new CpuLoadChart(timeWindow, sampledCpuLoads);
     }
 
     @Override
-    public List<AgentStatChartGroup> selectAgentChartList(String agentId, TimeWindow timeWindow) {
-        AgentStatChartGroup agentStatChartGroup = selectAgentChart(agentId, timeWindow);
+    public List<StatChart> selectAgentChartList(String agentId, TimeWindow timeWindow) {
+        StatChart agentStatChart = selectAgentChart(agentId, timeWindow);
 
-        List<AgentStatChartGroup> result = new ArrayList<>(1);
-        result.add(agentStatChartGroup);
+        List<StatChart> result = new ArrayList<>(1);
+        result.add(agentStatChart);
 
         return result;
     }

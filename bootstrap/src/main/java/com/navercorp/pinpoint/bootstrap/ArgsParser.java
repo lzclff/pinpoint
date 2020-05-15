@@ -26,16 +26,18 @@ import java.util.Scanner;
  * @author Woonduk Kang(emeroad)
  */
 public class ArgsParser {
+    public static final String DELIMITER = ",";
+    private static final String DELIMITER_PATTERN = "\\s*" + DELIMITER + "\\s*";
 
     public Map<String, String> parse(String args) {
-        if (args == null || args.isEmpty()) {
+        if (isEmpty(args)) {
             return Collections.emptyMap();
         }
 
         final Map<String, String> map = new HashMap<String, String>();
 
         Scanner scanner = new Scanner(args);
-        scanner.useDelimiter("\\s*,\\s*");
+        scanner.useDelimiter(DELIMITER_PATTERN);
 
         while (scanner.hasNext()) {
             String token = scanner.next();
@@ -51,6 +53,10 @@ public class ArgsParser {
         }
         scanner.close();
         return Collections.unmodifiableMap(map);
+    }
+
+    private boolean isEmpty(String args) {
+        return args == null || args.isEmpty();
     }
 
 }

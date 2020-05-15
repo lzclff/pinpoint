@@ -16,25 +16,29 @@
 
 package com.navercorp.pinpoint.web.filter;
 
-import java.util.List;
-
-import com.navercorp.pinpoint.common.server.bo.SpanBo;
+import java.util.function.Predicate;
 
 /**
  *
  * @author netspider
  * @author emeroad
  */
-public interface Filter {
+public interface Filter<T> {
     boolean ACCEPT = true;
     boolean REJECT = false;
 
     Filter NONE = new Filter() {
         @Override
-        public boolean include(List<SpanBo> transaction) {
+        public boolean include(Object t) {
             return ACCEPT;
         }
     };
 
-    boolean include(List<SpanBo> transaction);
+    static <T> Filter<T> acceptAllFilter() {
+        @SuppressWarnings("unchecked")
+        final Filter<T> none = NONE;
+        return none;
+    }
+
+    boolean include(T transaction);
 }

@@ -19,12 +19,10 @@ package com.navercorp.pinpoint.rpc;
 import com.navercorp.pinpoint.rpc.common.SocketStateCode;
 
 /**
- * @Author Taejin Koo
+ * @author Taejin Koo
  */
 public interface StateChangeEventListener<S extends PinpointSocket> {
 
-    void eventPerformed(S pinpointSocket, SocketStateCode stateCode) throws Exception;
-
-    void exceptionCaught(S pinpointSocket, SocketStateCode stateCode, Throwable e);
+    void stateUpdated(S pinpointSocket, SocketStateCode updatedStateCode) throws Exception;
 
 }

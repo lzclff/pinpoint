@@ -18,11 +18,8 @@ package com.navercorp.pinpoint.plugin.httpclient4.interceptor;
 
 import com.navercorp.pinpoint.bootstrap.context.MethodDescriptor;
 import com.navercorp.pinpoint.bootstrap.context.SpanEventRecorder;
-import com.navercorp.pinpoint.bootstrap.context.Trace;
 import com.navercorp.pinpoint.bootstrap.context.TraceContext;
-import com.navercorp.pinpoint.bootstrap.interceptor.AroundInterceptor;
-import com.navercorp.pinpoint.bootstrap.logging.PLogger;
-import com.navercorp.pinpoint.bootstrap.logging.PLoggerFactory;
+import com.navercorp.pinpoint.bootstrap.interceptor.SpanEventSimpleAroundInterceptorForPlugin;
 import com.navercorp.pinpoint.common.trace.AnnotationKey;
 import com.navercorp.pinpoint.common.trace.ServiceType;
 import com.navercorp.pinpoint.plugin.httpclient4.HttpClient4Constants;
@@ -31,66 +28,44 @@ import com.navercorp.pinpoint.plugin.httpclient4.HttpClient4Constants;
  * @author Minwoo Jung
  * @author jaehong.kim
  */
-public class DefaultHttpRequestRetryHandlerRetryRequestMethodInterceptor implements AroundInterceptor {
+public class DefaultHttpRequestRetryHandlerRetryRequestMethodInterceptor extends SpanEventSimpleAroundInterceptorForPlugin {
 
-    private final PLogger logger = PLoggerFactory.getLogger(this.getClass());
-    private final boolean isDebug = logger.isDebugEnabled();
-
-    private final MethodDescriptor descriptor;
-    private final TraceContext traceContext;
-    private ServiceType serviceType = HttpClient4Constants.HTTP_CLIENT_4_INTERNAL;
+    private final ServiceType serviceType = HttpClient4Constants.HTTP_CLIENT_4_INTERNAL;
 
     public DefaultHttpRequestRetryHandlerRetryRequestMethodInterceptor(TraceContext context, MethodDescriptor methodDescriptor) {
-        this.traceContext = context;
-        this.descriptor = methodDescriptor;
+        super(context, methodDescriptor);
     }
 
     @Override
-    public void before(Object target, Object[] args) {
-        if (isDebug) {
-            logger.beforeInterceptor(target, args);
-        }
-
-        Trace trace = traceContext.currentTraceObject();
-
-        if (trace == null) {
-            return;
-        }
-
-        SpanEventRecorder recorder = trace.traceBlockBegin();
+    protected void doInBeforeTrace(SpanEventRecorder recorder, Object target, Object[] args) {
         recorder.recordServiceType(serviceType);
     }
 
     @Override
-    public void after(Object target, Object[] args, Object result, Throwable throwable) {
-        if (isDebug) {
-            logger.afterInterceptor(target, args);
-        }
+    protected void doInAfterTrace(SpanEventRecorder recorder, Object target, Object[] args, Object result, Throwable throwable) {
+        recorder.recordApi(methodDescriptor);
+        recorder.recordException(throwable);
 
-        final Trace trace = traceContext.currentTraceObject();
-        if (trace == null) {
-            return;
-        }
+        final String retryMessage = getRetryMessage(args);
+        recorder.recordAttribute(AnnotationKey.HTTP_INTERNAL_DISPLAY, retryMessage);
 
-        try {
-            final SpanEventRecorder recorder = trace.currentSpanEventRecorder();
-            recorder.recordApi(descriptor);
-            recorder.recordException(throwable);
-            // arguments(final IOException exception, final int executionCount, final HttpContext context)
-            final StringBuilder sb = new StringBuilder();
-            if (args != null && args.length >= 1 && args[0] != null && args[0] instanceof Exception) {
-                sb.append(args[0].getClass().getName()).append(", ");
-            }
-            if (args != null && args.length >= 2 && args[1] != null && args[1] instanceof Integer) {
-                sb.append(args[1]);
-            }
-            recorder.recordAttribute(AnnotationKey.HTTP_INTERNAL_DISPLAY, sb.toString());
-
-            if (result != null) {
-                recorder.recordAttribute(AnnotationKey.RETURN_DATA, result);
-            }
-        } finally {
-            trace.traceBlockEnd();
+        if (result != null) {
+            recorder.recordAttribute(AnnotationKey.RETURN_DATA, result);
         }
+    }
+
+    private String getRetryMessage(Object[] args) {
+        if (args == null) {
+            return "";
+        }
+        // arguments(final IOException exception, final int executionCount, final HttpContext context)
+        final StringBuilder sb = new StringBuilder();
+        if (args.length >= 1 && args[0] instanceof Exception) {
+            sb.append(args[0].getClass().getName()).append(", ");
+        }
+        if (args.length >= 2 && args[1] instanceof Integer) {
+            sb.append(args[1]);
+        }
+        return sb.toString();
     }
 }

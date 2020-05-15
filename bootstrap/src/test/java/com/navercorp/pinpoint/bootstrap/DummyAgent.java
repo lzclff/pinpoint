@@ -16,9 +16,6 @@
 
 package com.navercorp.pinpoint.bootstrap;
 
-import com.navercorp.pinpoint.bootstrap.config.ProfilerConfig;
-import com.navercorp.pinpoint.bootstrap.context.TraceContext;
-
 /**
  * @author emeroad
  * @author hyungil.jeong
@@ -35,7 +32,11 @@ public class DummyAgent implements Agent {
 
     @Override
     public void stop() {
+
     }
 
+    @Override
+    public void registerStopHandler() {
 
+    }
 }

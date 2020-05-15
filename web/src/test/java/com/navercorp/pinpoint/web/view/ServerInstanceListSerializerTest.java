@@ -25,7 +25,7 @@ import com.fasterxml.jackson.databind.cfg.MapperConfig;
 import com.fasterxml.jackson.databind.introspect.Annotated;
 import com.fasterxml.jackson.databind.jsontype.TypeIdResolver;
 import com.fasterxml.jackson.databind.jsontype.TypeResolverBuilder;
-import com.navercorp.pinpoint.common.service.ServiceTypeRegistryService;
+import com.navercorp.pinpoint.loader.service.ServiceTypeRegistryService;
 import com.navercorp.pinpoint.web.applicationmap.ServerInstanceListTest;
 
 import com.navercorp.pinpoint.web.util.ServiceTypeRegistryMockFactory;
@@ -33,8 +33,8 @@ import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.navercorp.pinpoint.web.applicationmap.ServerBuilder;
-import com.navercorp.pinpoint.web.applicationmap.ServerInstanceList;
+import com.navercorp.pinpoint.web.applicationmap.nodes.ServerBuilder;
+import com.navercorp.pinpoint.web.applicationmap.nodes.ServerInstanceList;
 import com.navercorp.pinpoint.web.vo.AgentInfo;
 import org.springframework.http.converter.json.Jackson2ObjectMapperFactoryBean;
 
@@ -77,11 +77,6 @@ public class ServerInstanceListSerializerTest {
     private ObjectMapper createMapper() throws Exception {
         final Jackson2ObjectMapperFactoryBean factoryBean = new Jackson2ObjectMapperFactoryBean();
 
-        final ServerInstanceSerializer serverInstanceSerializer = new ServerInstanceSerializer();
-
-        final ServiceTypeRegistryService serviceTypeRegistryService = mockServiceTypeRegistryService();
-        serverInstanceSerializer.setServiceTypeRegistryService(serviceTypeRegistryService);
-
         factoryBean.setHandlerInstantiator(new TestHandlerInstantiator());
         // TODO FIX spring managed object
 
@@ -95,15 +90,11 @@ public class ServerInstanceListSerializerTest {
         }
 
         public JsonSerializer<?> serializerInstance(SerializationConfig config, Annotated annotated, Class<?> keyDeserClass) {
-            if (annotated.getName().equals("com.navercorp.pinpoint.web.applicationmap.ServerInstance")) {
+            if (annotated.getName().equals("com.navercorp.pinpoint.web.applicationmap.nodes.ServerInstance")) {
                 final ServiceTypeRegistryService serviceTypeRegistryService = mockServiceTypeRegistryService();
-
-                final ServerInstanceSerializer serverInstanceSerializer = new ServerInstanceSerializer();
-                serverInstanceSerializer.setServiceTypeRegistryService(serviceTypeRegistryService);
-
                 final AgentLifeCycleStateSerializer agentLifeCycleStateSerializer = new AgentLifeCycleStateSerializer();
-                serverInstanceSerializer.setAgentLifeCycleStateSerializer(agentLifeCycleStateSerializer);
-                return serverInstanceSerializer;
+
+                return new ServerInstanceSerializer(serviceTypeRegistryService, agentLifeCycleStateSerializer);
             }
             return null;
         }

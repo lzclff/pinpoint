@@ -31,27 +31,28 @@ import javax.annotation.PostConstruct;
 import javax.annotation.PreDestroy;
 import java.io.IOException;
 import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Objects;
 
 /**
- * @Author Taejin Koo
+ * @author Taejin Koo
  */
 public class ClusterManager {
 
     private final Logger logger = LoggerFactory.getLogger(this.getClass());
-    private final Charset charset = Charset.forName("UTF-8");
+    private final Charset charset = StandardCharsets.UTF_8;
 
     private final WebConfig config;
 
-    @Autowired
-    ClusterConnectionManager clusterConnectionManager;
+    private final ClusterConnectionManager clusterConnectionManager;
+    private final ClusterDataManager clusterDataManager;
 
-    @Autowired
-    ClusterDataManager clusterDataManager;
-
-    public ClusterManager(WebConfig config) {
-        this.config = config;
+    public ClusterManager(WebConfig config, ClusterConnectionManager clusterConnectionManager, ClusterDataManager clusterDataManager) {
+        this.config = Objects.requireNonNull(config, "config");
+        this.clusterConnectionManager = Objects.requireNonNull(clusterConnectionManager, "clusterConnectionManager");
+        this.clusterDataManager = Objects.requireNonNull(clusterDataManager, "clusterDataManager");
     }
 
     @PostConstruct

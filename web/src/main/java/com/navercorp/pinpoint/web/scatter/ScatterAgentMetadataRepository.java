@@ -18,22 +18,33 @@ package com.navercorp.pinpoint.web.scatter;
 import com.navercorp.pinpoint.web.vo.scatter.DotAgentInfo;
 
 import java.util.HashSet;
+import java.util.Objects;
 import java.util.Set;
 
 /**
- * @Author Taejin Koo
+ * @author Taejin Koo
  */
 public class ScatterAgentMetadataRepository {
 
-    private final Set<DotAgentInfo> dotAgentInfoSet = new HashSet<>();
+    private final Set<DotAgentInfo> dotAgentInfoSet;
+
+    public ScatterAgentMetadataRepository() {
+        this.dotAgentInfoSet = new HashSet<>();
+    }
+
+    public ScatterAgentMetadataRepository(Set<DotAgentInfo> dotAgentInfoSet) {
+        this.dotAgentInfoSet = Objects.requireNonNull(dotAgentInfoSet, "dotAgentInfoSet");
+    }
 
     void addDotAgentInfo(DotAgentInfo dotAgentInfo) {
-        if (!dotAgentInfoSet.contains(dotAgentInfo)) {
-            dotAgentInfoSet.add(dotAgentInfo);
-        }
+        Objects.requireNonNull(dotAgentInfo, "dotAgentInfo");
+
+        dotAgentInfoSet.add(dotAgentInfo);
     }
 
     void merge(ScatterAgentMetadataRepository scatterAgentMetadataRepository) {
+        Objects.requireNonNull(scatterAgentMetadataRepository, "scatterAgentMetadataRepository");
+        
         Set<DotAgentInfo> dotAgentInfoSet = scatterAgentMetadataRepository.getDotAgentInfoSet();
         for (DotAgentInfo dotAgentInfo : dotAgentInfoSet) {
             addDotAgentInfo(dotAgentInfo);

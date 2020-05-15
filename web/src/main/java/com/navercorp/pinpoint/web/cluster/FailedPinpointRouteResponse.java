@@ -20,12 +20,12 @@ import com.navercorp.pinpoint.thrift.dto.command.TRouteResult;
 import org.apache.thrift.TBase;
 
 /**
- * @Author Taejin Koo
+ * @author Taejin Koo
  */
 public class FailedPinpointRouteResponse implements PinpointRouteResponse {
 
-    private TRouteResult routeResult;
-    private TBase response;
+    private final TRouteResult routeResult;
+    private final TBase response;
 
     public FailedPinpointRouteResponse(TRouteResult routeResult, TBase response) {
         this.routeResult = routeResult;
@@ -40,6 +40,11 @@ public class FailedPinpointRouteResponse implements PinpointRouteResponse {
     @Override
     public TBase getResponse() {
         return response;
+    }
+
+    @Override
+    public String getMessage() {
+        return null;
     }
 
     @Override

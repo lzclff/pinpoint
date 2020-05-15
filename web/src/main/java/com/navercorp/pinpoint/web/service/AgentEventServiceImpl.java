@@ -16,49 +16,56 @@
 
 package com.navercorp.pinpoint.web.service;
 
-import java.io.UnsupportedEncodingException;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.EnumSet;
-import java.util.List;
-import java.util.PriorityQueue;
-import java.util.Set;
-
+import com.navercorp.pinpoint.common.server.bo.event.AgentEventBo;
+import com.navercorp.pinpoint.common.server.util.AgentEventMessageDeserializer;
+import com.navercorp.pinpoint.common.server.util.AgentEventMessageDeserializerV1;
+import com.navercorp.pinpoint.common.server.util.AgentEventType;
 import com.navercorp.pinpoint.common.server.util.AgentEventTypeCategory;
+import com.navercorp.pinpoint.common.util.ArrayUtils;
+import com.navercorp.pinpoint.web.dao.AgentEventDao;
+import com.navercorp.pinpoint.web.vo.AgentEvent;
 import com.navercorp.pinpoint.web.vo.DurationalAgentEvent;
+import com.navercorp.pinpoint.web.vo.Range;
 import org.apache.commons.collections.CollectionUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
-import com.navercorp.pinpoint.common.server.bo.AgentEventBo;
-import com.navercorp.pinpoint.common.server.util.AgentEventMessageDeserializer;
-import com.navercorp.pinpoint.common.server.util.AgentEventType;
-import com.navercorp.pinpoint.web.dao.AgentEventDao;
-import com.navercorp.pinpoint.web.vo.AgentEvent;
-import com.navercorp.pinpoint.web.vo.Range;
+import java.io.UnsupportedEncodingException;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.EnumSet;
+import java.util.List;
+import java.util.Objects;
+import java.util.PriorityQueue;
+import java.util.Set;
 
 /**
  * @author HyunGil Jeong
+ * @author jaehong.kim - Add agentEventMessageDeserializerV1
  */
 @Service
 public class AgentEventServiceImpl implements AgentEventService {
 
     private final Logger logger = LoggerFactory.getLogger(this.getClass());
 
-    @Autowired
-    private AgentEventDao agentEventDao;
+    private final AgentEventDao agentEventDao;
 
-    @Autowired
-    private AgentEventMessageDeserializer agentEventMessageDeserializer;
+    private final AgentEventMessageDeserializer agentEventMessageDeserializer;
+
+    private final AgentEventMessageDeserializerV1 agentEventMessageDeserializerV1;
+
+    public AgentEventServiceImpl(AgentEventDao agentEventDao, AgentEventMessageDeserializer agentEventMessageDeserializer, AgentEventMessageDeserializerV1 agentEventMessageDeserializerV1) {
+        this.agentEventDao = Objects.requireNonNull(agentEventDao, "agentEventDao");
+        this.agentEventMessageDeserializer = Objects.requireNonNull(agentEventMessageDeserializer, "agentEventMessageDeserializer");
+        this.agentEventMessageDeserializerV1 = Objects.requireNonNull(agentEventMessageDeserializerV1, "agentEventMessageDeserializerV1");
+    }
 
     @Override
     public List<AgentEvent> getAgentEvents(String agentId, Range range, int... excludeEventTypeCodes) {
-        if (agentId == null) {
-            throw new NullPointerException("agentId must not be null");
-        }
-        final boolean includeEventMessage = false;
+        Objects.requireNonNull(agentId, "agentId");
+
         Set<AgentEventType> excludeEventTypes = EnumSet.noneOf(AgentEventType.class);
         for (int excludeEventTypeCode : excludeEventTypeCodes) {
             AgentEventType excludeEventType = AgentEventType.getTypeByCode(excludeEventTypeCode);
@@ -67,19 +74,18 @@ public class AgentEventServiceImpl implements AgentEventService {
             }
         }
         List<AgentEventBo> agentEventBos = this.agentEventDao.getAgentEvents(agentId, range, excludeEventTypes);
-        List<AgentEvent> agentEvents = createAgentEvents(agentEventBos, includeEventMessage);
-        Collections.sort(agentEvents, AgentEvent.EVENT_TIMESTAMP_ASC_COMPARATOR);
+        List<AgentEvent> agentEvents = createAgentEvents(agentEventBos);
+        agentEvents.sort(AgentEvent.EVENT_TIMESTAMP_ASC_COMPARATOR);
         return agentEvents;
     }
 
     @Override
     public AgentEvent getAgentEvent(String agentId, long eventTimestamp, int eventTypeCode) {
-        if (agentId == null) {
-            throw new NullPointerException("agentId must not be null");
-        }
+        Objects.requireNonNull(agentId, "agentId");
         if (eventTimestamp < 0) {
             throw new IllegalArgumentException("eventTimeTimestamp must not be less than 0");
         }
+
         final AgentEventType eventType = AgentEventType.getTypeByCode(eventTypeCode);
         if (eventType == null) {
             throw new IllegalArgumentException("invalid eventTypeCode [" + eventTypeCode + "]");
@@ -92,7 +98,7 @@ public class AgentEventServiceImpl implements AgentEventService {
         return null;
     }
 
-    private List<AgentEvent> createAgentEvents(List<AgentEventBo> agentEventBos, boolean includeEventMessage) {
+    private List<AgentEvent> createAgentEvents(List<AgentEventBo> agentEventBos) {
         if (CollectionUtils.isEmpty(agentEventBos)) {
             return Collections.emptyList();
         }
@@ -100,9 +106,10 @@ public class AgentEventServiceImpl implements AgentEventService {
         PriorityQueue<DurationalAgentEvent> durationalAgentEvents = new PriorityQueue<>(agentEventBos.size(), AgentEvent.EVENT_TIMESTAMP_ASC_COMPARATOR);
         for (AgentEventBo agentEventBo : agentEventBos) {
             if (agentEventBo.getEventType().isCategorizedAs(AgentEventTypeCategory.DURATIONAL)) {
-                durationalAgentEvents.add(createDurationalAgentEvent(agentEventBo, includeEventMessage));
+                durationalAgentEvents.add(createDurationalAgentEvent(agentEventBo, false));
             } else {
-                agentEvents.add(createAgentEvent(agentEventBo, includeEventMessage));
+                boolean hasMessage = !ArrayUtils.isEmpty(agentEventBo.getEventBody());
+                agentEvents.add(createAgentEvent(agentEventBo, hasMessage));
             }
         }
         long durationStartTimestamp = DurationalAgentEvent.UNKNOWN_TIMESTAMP;
@@ -142,7 +149,13 @@ public class AgentEventServiceImpl implements AgentEventService {
 
     private Object deserializeEventMessage(AgentEventBo agentEventBo) {
         try {
-            return this.agentEventMessageDeserializer.deserialize(agentEventBo.getEventType(), agentEventBo.getEventBody());
+            if (agentEventBo.getVersion() == 0) {
+                return this.agentEventMessageDeserializer.deserialize(agentEventBo.getEventType(), agentEventBo.getEventBody());
+            } else if (agentEventBo.getVersion() == AgentEventBo.CURRENT_VERSION) {
+                return this.agentEventMessageDeserializerV1.deserialize(agentEventBo.getEventType(), agentEventBo.getEventBody());
+            } else {
+                throw new UnsupportedEncodingException("invalid version " + agentEventBo.getVersion());
+            }
         } catch (UnsupportedEncodingException e) {
             logger.warn("error deserializing event message", e);
             return null;

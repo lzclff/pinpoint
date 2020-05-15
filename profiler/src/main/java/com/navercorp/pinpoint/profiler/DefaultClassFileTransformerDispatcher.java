@@ -19,26 +19,10 @@ import java.lang.instrument.ClassFileTransformer;
 import java.lang.instrument.IllegalClassFormatException;
 import java.security.ProtectionDomain;
 
-import com.google.inject.Inject;
-import com.navercorp.pinpoint.bootstrap.config.ProfilerConfig;
-import com.navercorp.pinpoint.bootstrap.instrument.DynamicTransformTrigger;
-import com.navercorp.pinpoint.bootstrap.instrument.InstrumentContext;
-import com.navercorp.pinpoint.bootstrap.instrument.InstrumentEngine;
-import com.navercorp.pinpoint.profiler.instrument.ClassInjector;
+import com.navercorp.pinpoint.common.util.Assert;
+import com.navercorp.pinpoint.profiler.instrument.transformer.LambdaClassFileResolver;
 import com.navercorp.pinpoint.profiler.instrument.transformer.TransformerRegistry;
-import com.navercorp.pinpoint.profiler.plugin.ClassFileTransformerLoader;
-import com.navercorp.pinpoint.profiler.plugin.PluginInstrumentContext;
-import com.navercorp.pinpoint.profiler.plugin.PluginContextLoadResult;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import com.navercorp.pinpoint.bootstrap.config.Filter;
-import com.navercorp.pinpoint.profiler.instrument.LegacyProfilerPluginClassInjector;
-import com.navercorp.pinpoint.profiler.instrument.transformer.DebugTransformer;
-import com.navercorp.pinpoint.profiler.instrument.transformer.DefaultTransformerRegistry;
-import com.navercorp.pinpoint.profiler.plugin.MatchableClassFileTransformer;
-import com.navercorp.pinpoint.profiler.util.JavaAssistUtils;
 
 /**
  * @author emeroad
@@ -46,129 +30,69 @@ import com.navercorp.pinpoint.profiler.util.JavaAssistUtils;
  * @author jaehong.kim
  */
 public class DefaultClassFileTransformerDispatcher implements ClassFileTransformerDispatcher {
-    private final Logger logger = LoggerFactory.getLogger(this.getClass());
-    private final boolean isDebug = logger.isDebugEnabled();
 
-    private final ClassLoader agentClassLoader = this.getClass().getClassLoader();
-
+    private final BaseClassFileTransformer baseClassFileTransformer;
     private final TransformerRegistry transformerRegistry;
     private final DynamicTransformerRegistry dynamicTransformerRegistry;
 
-    private final InstrumentContext globalContext;
-    private final Filter<String> debugTargetFilter;
-    private final DebugTransformer debugTransformer;
+    private final TransformerRegistry debugTransformerRegistry;
 
+    private final ClassFileFilter classLoaderFilter;
     private final ClassFileFilter pinpointClassFilter;
     private final ClassFileFilter unmodifiableFilter;
 
-    @Inject
-    public DefaultClassFileTransformerDispatcher(ProfilerConfig profilerConfig, PluginContextLoadResult pluginContexts, InstrumentEngine instrumentEngine,
-                                                 DynamicTransformTrigger dynamicTransformTrigger, DynamicTransformerRegistry dynamicTransformerRegistry) {
-        if (instrumentEngine == null) {
-            throw new NullPointerException("instrumentEngine must not be null");
-        }
-        if (dynamicTransformerRegistry == null) {
-            throw new NullPointerException("dynamicTransformerRegistry must not be null");
-        }
+    private final LambdaClassFileResolver lambdaClassFileResolver;
 
-        ClassInjector classInjector = new LegacyProfilerPluginClassInjector(getClass().getClassLoader());
-        ClassFileTransformerLoader transformerRegistry = new ClassFileTransformerLoader(profilerConfig, dynamicTransformTrigger);
-        this.globalContext = new PluginInstrumentContext(profilerConfig, instrumentEngine, dynamicTransformTrigger, classInjector, transformerRegistry);
-        this.debugTargetFilter = profilerConfig.getProfilableClassFilter();
-        this.debugTransformer = new DebugTransformer(instrumentEngine, globalContext);
+    public DefaultClassFileTransformerDispatcher(TransformerRegistry transformerRegistry, TransformerRegistry debugTransformerRegistry,
+                                                 DynamicTransformerRegistry dynamicTransformerRegistry, LambdaClassFileResolver lambdaClassFileResolver) {
 
-        this.pinpointClassFilter = new PinpointClassFilter(agentClassLoader);
+        this.baseClassFileTransformer = new BaseClassFileTransformer(this.getClass().getClassLoader());
+        this.debugTransformerRegistry = Assert.requireNonNull(debugTransformerRegistry, "debugTransformerRegistry");
+
+        this.classLoaderFilter = new PinpointClassLoaderFilter(this.getClass().getClassLoader());
+        this.pinpointClassFilter = new PinpointClassFilter();
         this.unmodifiableFilter = new UnmodifiableClassFilter();
 
-        this.transformerRegistry = createTransformerRegistry(pluginContexts);
-        this.dynamicTransformerRegistry = dynamicTransformerRegistry;
+        this.transformerRegistry = Assert.requireNonNull(transformerRegistry, "transformerRegistry");
+        this.dynamicTransformerRegistry = Assert.requireNonNull(dynamicTransformerRegistry, "dynamicTransformerRegistry");
+        this.lambdaClassFileResolver = Assert.requireNonNull(lambdaClassFileResolver, "lambdaClassFileResolver");
     }
 
     @Override
     public byte[] transform(ClassLoader classLoader, String classInternalName, Class<?> classBeingRedefined, ProtectionDomain protectionDomain, byte[] classFileBuffer) throws IllegalClassFormatException {
-        if (!pinpointClassFilter.accept(classLoader, classInternalName, classBeingRedefined, protectionDomain, classFileBuffer)) {
+        if (!classLoaderFilter.accept(classLoader, classInternalName, classBeingRedefined, protectionDomain, classFileBuffer)) {
             return null;
         }
 
-        final ClassFileTransformer dynamicTransformer = dynamicTransformerRegistry.getTransformer(classLoader, classInternalName);
+        final String internalName = lambdaClassFileResolver.resolve(classLoader, classInternalName, protectionDomain, classFileBuffer);
+        if (internalName == null) {
+            return null;
+        }
+
+        if (!pinpointClassFilter.accept(classLoader, internalName, classBeingRedefined, protectionDomain, classFileBuffer)) {
+            return null;
+        }
+
+        final ClassFileTransformer dynamicTransformer = dynamicTransformerRegistry.getTransformer(classLoader, internalName);
         if (dynamicTransformer != null) {
-            return transform0(classLoader, classInternalName, classBeingRedefined, protectionDomain, classFileBuffer, dynamicTransformer);
+            return baseClassFileTransformer.transform(classLoader, internalName, classBeingRedefined, protectionDomain, classFileBuffer, dynamicTransformer);
         }
 
-        if (!unmodifiableFilter.accept(classLoader, classInternalName, classBeingRedefined, protectionDomain, classFileBuffer)) {
+        if (!unmodifiableFilter.accept(classLoader, internalName, classBeingRedefined, protectionDomain, classFileBuffer)) {
             return null;
         }
 
-        ClassFileTransformer transformer = this.transformerRegistry.findTransformer(classInternalName);
+        ClassFileTransformer transformer = this.transformerRegistry.findTransformer(classLoader, internalName, classFileBuffer);
         if (transformer == null) {
             // For debug
             // TODO What if a modifier is duplicated?
-            if (this.debugTargetFilter.filter(classInternalName)) {
-                // Added to see if call stack view is OK on a test machine.
-                transformer = debugTransformer;
-            } else {
+            transformer = this.debugTransformerRegistry.findTransformer(classLoader, internalName, classFileBuffer);
+            if (transformer == null) {
                 return null;
             }
         }
 
-        return transform0(classLoader, classInternalName, classBeingRedefined, protectionDomain, classFileBuffer, transformer);
+        return baseClassFileTransformer.transform(classLoader, internalName, classBeingRedefined, protectionDomain, classFileBuffer, transformer);
     }
 
-    private byte[] transform0(ClassLoader classLoader, String classInternalName, Class<?> classBeingRedefined, ProtectionDomain protectionDomain, byte[] classFileBuffer, ClassFileTransformer transformer) {
-        final String className = JavaAssistUtils.jvmNameToJavaName(classInternalName);
-
-        if (isDebug) {
-            if (classBeingRedefined == null) {
-                logger.debug("[transform] classLoader:{} className:{} transformer:{}", classLoader, className, transformer.getClass().getName());
-            } else {
-                logger.debug("[retransform] classLoader:{} className:{} transformer:{}", classLoader, className, transformer.getClass().getName());
-            }
-        }
-
-        try {
-            final Thread thread = Thread.currentThread();
-            final ClassLoader before = getContextClassLoader(thread);
-            thread.setContextClassLoader(this.agentClassLoader);
-            try {
-                return transformer.transform(classLoader, className, classBeingRedefined, protectionDomain, classFileBuffer);
-            } finally {
-                // The context class loader have to be recovered even if it was null.
-                thread.setContextClassLoader(before);
-            }
-        } catch (Throwable e) {
-            logger.error("Transformer:{} threw an exception. cl:{} ctxCl:{} agentCl:{} Cause:{}",
-                    transformer.getClass().getName(), classLoader, Thread.currentThread().getContextClassLoader(), agentClassLoader, e.getMessage(), e);
-            return null;
-        }
-    }
-
-
-    private ClassLoader getContextClassLoader(Thread thread) throws Throwable {
-        try {
-            return thread.getContextClassLoader();
-        } catch (SecurityException se) {
-            throw se;
-        } catch (Throwable th) {
-            if (isDebug) {
-                logger.debug("getContextClassLoader(). Caused:{}", th.getMessage(), th);
-            }
-            throw th;
-        }
-    }
-
-    private TransformerRegistry createTransformerRegistry(PluginContextLoadResult pluginContexts) {
-        DefaultTransformerRegistry registry = new DefaultTransformerRegistry();
-
-        for (ClassFileTransformer transformer : pluginContexts.getClassFileTransformer()) {
-            if (transformer instanceof MatchableClassFileTransformer) {
-                MatchableClassFileTransformer t = (MatchableClassFileTransformer) transformer;
-                logger.info("Registering class file transformer {} for {} ", t, t.getMatcher());
-                registry.addTransformer(t.getMatcher(), t);
-            } else {
-                logger.warn("Ignore class file transformer {}", transformer);
-            }
-        }
-
-        return registry;
-    }
 }

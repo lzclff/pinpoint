@@ -1,5 +1,5 @@
 /*
- * Copyright 2017 NAVER Corp.
+ * Copyright 2019 NAVER Corp.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,19 +18,16 @@ package com.navercorp.pinpoint.test;
 
 import com.google.inject.AbstractModule;
 import com.google.inject.Scopes;
-import com.navercorp.pinpoint.bootstrap.context.ServerMetaDataHolder;
-import com.navercorp.pinpoint.profiler.context.module.SpanDataSender;
-import com.navercorp.pinpoint.profiler.context.module.StatDataSender;
+import com.navercorp.pinpoint.common.util.ClassLoaderUtils;
+import com.navercorp.pinpoint.profiler.context.DefaultServerMetaDataRegistryService;
+import com.navercorp.pinpoint.profiler.context.ServerMetaDataRegistryService;
+import com.navercorp.pinpoint.profiler.context.TraceDataFormatVersion;
+import com.navercorp.pinpoint.profiler.context.module.PluginClassLoader;
 import com.navercorp.pinpoint.profiler.context.storage.StorageFactory;
 import com.navercorp.pinpoint.profiler.plugin.PluginContextLoadResult;
-import com.navercorp.pinpoint.profiler.sender.DataSender;
-import com.navercorp.pinpoint.profiler.sender.EnhancedDataSender;
+import com.navercorp.pinpoint.profiler.plugin.PluginSetup;
+import com.navercorp.pinpoint.profiler.plugin.ProfilerPluginContextLoader;
 import com.navercorp.pinpoint.profiler.util.RuntimeMXBeanUtils;
-import com.navercorp.pinpoint.rpc.client.PinpointClient;
-import com.navercorp.pinpoint.rpc.client.PinpointClientFactory;
-import com.navercorp.pinpoint.test.provder.NullPinpointClientFactoryProvider;
-import com.navercorp.pinpoint.test.provder.NullPinpointClientProvider;
-import org.apache.thrift.TBase;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -46,61 +43,29 @@ public class MockApplicationContextModule extends AbstractModule {
     public MockApplicationContextModule() {
     }
 
+
     @Override
     protected void configure() {
+        logger.info("configure {}", this.getClass().getSimpleName());
 
-        final DataSender spanDataSender = newUdpSpanDataSender();
-        logger.debug("spanDataSender:{}", spanDataSender);
-        bind(DataSender.class).annotatedWith(SpanDataSender.class).toInstance(spanDataSender);
+        bind(TraceDataFormatVersion.class).toInstance(TraceDataFormatVersion.V1);
+        bind(StorageFactory.class).to(TestSpanStorageFactory.class);
 
-        final DataSender statDataSender = newUdpStatDataSender();
-        logger.debug("statDataSender:{}", statDataSender);
-        bind(DataSender.class).annotatedWith(StatDataSender.class).toInstance(statDataSender);
+        ServerMetaDataRegistryService serverMetaDataRegistryService = newServerMetaDataRegistryService();
+        bind(ServerMetaDataRegistryService.class).toInstance(serverMetaDataRegistryService);
 
-        StorageFactory storageFactory = newStorageFactory(spanDataSender);
-        logger.debug("spanFactory:{}", spanDataSender);
-        bind(StorageFactory.class).toInstance(storageFactory);
-
-        bind(PinpointClientFactory.class).toProvider(NullPinpointClientFactoryProvider.class);
-        bind(PinpointClient.class).toProvider(NullPinpointClientProvider.class);
-
-        EnhancedDataSender enhancedDataSender = newTcpDataSender();
-        logger.debug("enhancedDataSender:{}", enhancedDataSender);
-        bind(EnhancedDataSender.class).toInstance(enhancedDataSender);
-
-        ServerMetaDataHolder serverMetaDataHolder = newServerMetaDataHolder();
-        logger.debug("serverMetaDataHolder:{}", serverMetaDataHolder);
-        bind(ServerMetaDataHolder.class).toInstance(serverMetaDataHolder);
-
-
+        ClassLoader defaultClassLoader = ClassLoaderUtils.getDefaultClassLoader();
+        bind(ClassLoader.class).annotatedWith(PluginClassLoader.class).toInstance(defaultClassLoader);
+        bind(PluginSetup.class).toProvider(MockPluginSetupProvider.class).in(Scopes.SINGLETON);
+        bind(ProfilerPluginContextLoader.class).toProvider(MockProfilerPluginContextLoaderProvider.class).in(Scopes.SINGLETON);
         bind(PluginContextLoadResult.class).toProvider(MockPluginContextLoadResultProvider.class).in(Scopes.SINGLETON);
     }
 
 
-    protected DataSender newUdpStatDataSender() {
-        DataSender dataSender = new ListenableDataSender<TBase<?, ?>>("StatDataSender");
-        return dataSender;
-    }
-
-
-    protected DataSender newUdpSpanDataSender() {
-        DataSender dataSender = new ListenableDataSender<TBase<?, ?>>("SpanDataSender");
-        return dataSender;
-    }
-
-    protected EnhancedDataSender newTcpDataSender() {
-        return new TestTcpDataSender();
-    }
-
-    protected StorageFactory newStorageFactory(DataSender spanDataSender) {
-        logger.debug("newStorageFactory dataSender:{}", spanDataSender);
-        StorageFactory storageFactory = new SimpleSpanStorageFactory(spanDataSender);
-        return storageFactory;
-    }
-
-    protected ServerMetaDataHolder newServerMetaDataHolder() {
+    private ServerMetaDataRegistryService newServerMetaDataRegistryService() {
         List<String> vmArgs = RuntimeMXBeanUtils.getVmArgs();
-        ServerMetaDataHolder serverMetaDataHolder = new ResettableServerMetaDataHolder(vmArgs);
-        return serverMetaDataHolder;
+        ServerMetaDataRegistryService serverMetaDataRegistryService = new DefaultServerMetaDataRegistryService(vmArgs);
+        return serverMetaDataRegistryService;
     }
+
 }

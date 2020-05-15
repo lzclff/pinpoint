@@ -15,20 +15,31 @@
  */
 package com.navercorp.pinpoint.plugin.vertx.interceptor;
 
-import com.navercorp.pinpoint.bootstrap.context.*;
-import com.navercorp.pinpoint.bootstrap.interceptor.SpanAsyncEventSimpleAroundInterceptor;
+import com.navercorp.pinpoint.bootstrap.context.AsyncContext;
+import com.navercorp.pinpoint.bootstrap.context.MethodDescriptor;
+import com.navercorp.pinpoint.bootstrap.context.SpanEventRecorder;
+import com.navercorp.pinpoint.bootstrap.context.SpanRecorder;
+import com.navercorp.pinpoint.bootstrap.context.Trace;
+import com.navercorp.pinpoint.bootstrap.context.TraceContext;
+import com.navercorp.pinpoint.bootstrap.plugin.http.HttpStatusCodeRecorder;
 import com.navercorp.pinpoint.plugin.vertx.VertxConstants;
+import io.vertx.core.http.impl.HttpServerResponseImpl;
 
 /**
  * @author jaehong.kim
  */
-public class HttpServerResponseImplInterceptor extends SpanAsyncEventSimpleAroundInterceptor {
+public class HttpServerResponseImplInterceptor extends AsyncContextSpanEventEndPointInterceptor {
+
+    private final HttpStatusCodeRecorder httpStatusCodeRecorder;
+
     public HttpServerResponseImplInterceptor(MethodDescriptor methodDescriptor, TraceContext traceContext) {
         super(traceContext, methodDescriptor);
+
+        this.httpStatusCodeRecorder = new HttpStatusCodeRecorder(traceContext.getProfilerConfig().getHttpStatusCodeErrors());
     }
 
     @Override
-    public void doInBeforeTrace(SpanEventRecorder recorder, AsyncTraceId asyncTraceId, Object target, Object[] args) {
+    public void doInBeforeTrace(SpanEventRecorder recorder, AsyncContext asyncContext, Object target, Object[] args) {
     }
 
     @Override
@@ -36,5 +47,18 @@ public class HttpServerResponseImplInterceptor extends SpanAsyncEventSimpleAroun
         recorder.recordApi(methodDescriptor);
         recorder.recordServiceType(VertxConstants.VERTX_HTTP_SERVER_INTERNAL);
         recorder.recordException(throwable);
+
+        if (target instanceof HttpServerResponseImpl) {
+            final HttpServerResponseImpl response = (HttpServerResponseImpl) target;
+            // TODO more simple.
+            final AsyncContext asyncContext = getAsyncContext(target);
+            if (asyncContext != null) {
+                final Trace trace = asyncContext.currentAsyncTraceObject();
+                if (trace != null) {
+                    final SpanRecorder spanRecorder = trace.getSpanRecorder();
+                    this.httpStatusCodeRecorder.record(spanRecorder, response.getStatusCode());
+                }
+            }
+        }
     }
 }

@@ -1,3 +1,4 @@
+<?xml version="1.0" encoding="UTF-8"?>
 <!--
   ~ Copyright 2016 NAVER Corp.
   ~
@@ -19,10 +20,15 @@
     <modelVersion>4.0.0</modelVersion>
     <parent>
         <groupId>com.navercorp.pinpoint</groupId>
-        <artifactId>pinpoint</artifactId>
-        <relativePath>../..</relativePath>
-        <version>1.6.1-SNAPSHOT</version>
+        <artifactId>pinpoint-plugins</artifactId>
+        <version>2.0.3-SNAPSHOT</version>
     </parent>
+
+    <properties>
+        <jdk.version>1.7</jdk.version>
+        <jdk.home>${env.JAVA_8_HOME}</jdk.home>
+        <sniffer.artifactid>java18</sniffer.artifactid>
+    </properties>
 
     <artifactId>pinpoint-commons-dbcp2-plugin</artifactId>
     <name>pinpoint-commons-dbcp2-plugin</name>

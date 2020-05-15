@@ -1,5 +1,5 @@
 /*
- * Copyright 2017 NAVER Corp.
+ * Copyright 2018 NAVER Corp.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,10 +16,11 @@
 
 package com.navercorp.pinpoint.profiler.context;
 
-import com.navercorp.pinpoint.bootstrap.context.AsyncTraceId;
 import com.navercorp.pinpoint.bootstrap.context.Trace;
 import com.navercorp.pinpoint.bootstrap.context.TraceId;
 import com.navercorp.pinpoint.common.annotations.InterfaceAudience;
+import com.navercorp.pinpoint.common.util.Assert;
+import com.navercorp.pinpoint.profiler.context.id.TraceRoot;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -34,17 +35,13 @@ public class LoggingBaseTraceFactory implements BaseTraceFactory {
 
     public static BaseTraceFactory wrap(BaseTraceFactory baseTraceFactory) {
         if (baseTraceFactory == null) {
-            throw new NullPointerException("baseTraceFactory must not be null");
+            throw new NullPointerException("baseTraceFactory");
         }
         return new LoggingBaseTraceFactory(baseTraceFactory);
     }
 
     private LoggingBaseTraceFactory(BaseTraceFactory baseTraceFactory) {
-        if (baseTraceFactory == null) {
-            throw new NullPointerException("baseTraceFactory must not be null");
-        }
-
-        this.baseTraceFactory = baseTraceFactory;
+        this.baseTraceFactory = Assert.requireNonNull(baseTraceFactory, "baseTraceFactory");
     }
 
     @Override
@@ -57,26 +54,18 @@ public class LoggingBaseTraceFactory implements BaseTraceFactory {
     @Override
     public Trace continueTraceObject(TraceId traceId) {
         if (logger.isDebugEnabled()) {
-            logger.debug("continueTraceObject(traceId = [{}])", traceId);
+            logger.debug("continueTraceObject(traceId:{})", traceId);
         }
 
         return baseTraceFactory.continueTraceObject(traceId);
     }
 
-    @Override
-    public Trace continueTraceObject(Trace trace) {
-        if (logger.isDebugEnabled()) {
-            logger.debug("continueTraceObject(trace = [{}])", trace);
-        }
-
-        return baseTraceFactory.continueTraceObject(trace);
-    }
 
     @Override
     @InterfaceAudience.LimitedPrivate("vert.x")
     public Trace continueAsyncTraceObject(TraceId traceId) {
         if (logger.isDebugEnabled()) {
-            logger.debug("continueAsyncTraceObject(traceId = [{}])", traceId);
+            logger.debug("continueAsyncTraceObject(traceId:{})", traceId);
         }
 
 
@@ -84,12 +73,12 @@ public class LoggingBaseTraceFactory implements BaseTraceFactory {
     }
 
     @Override
-    public Trace continueAsyncTraceObject(AsyncTraceId traceId, int asyncId, long startTime) {
+    public Trace continueAsyncTraceObject(TraceRoot traceRoot, LocalAsyncId localAsyncId) {
         if (logger.isDebugEnabled()) {
-            logger.debug("continueAsyncTraceObject(traceId = [{}], asyncId = [{}], startTime = [{}])", traceId, asyncId, startTime);
+            logger.debug("continueAsyncTraceObject(traceRoot:{}, localAsyncId:{})", traceRoot, localAsyncId);
         }
 
-        return baseTraceFactory.continueAsyncTraceObject(traceId, asyncId, startTime);
+        return baseTraceFactory.continueAsyncTraceObject(traceRoot, localAsyncId);
     }
 
     @Override

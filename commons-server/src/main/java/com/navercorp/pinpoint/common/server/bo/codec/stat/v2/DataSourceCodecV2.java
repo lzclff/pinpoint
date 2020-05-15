@@ -35,10 +35,10 @@ import com.navercorp.pinpoint.common.server.bo.stat.DataSourceListBo;
 import org.apache.commons.collections.CollectionUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
-import org.springframework.util.Assert;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 /**
  * @author Taejin Koo
@@ -52,8 +52,7 @@ public class DataSourceCodecV2 implements AgentStatCodec<DataSourceListBo> {
 
     @Autowired
     public DataSourceCodecV2(AgentStatDataPointCodec codec) {
-        Assert.notNull(codec, "agentStatDataPointCodec must not be null");
-        this.codec = codec;
+        this.codec = Objects.requireNonNull(codec, "agentStatDataPointCodec");
     }
 
     @Override
@@ -183,7 +182,7 @@ public class DataSourceCodecV2 implements AgentStatCodec<DataSourceListBo> {
         List<Integer> maxConnectionSizes = this.codec.decodeValues(valueBuffer, maxConnectionSizeStrategy, numValues);
 
         DataSourceListBo dataSourceListBo = new DataSourceListBo();
-        for (int i = 0; i < numValues; ++i) {
+        for (int i = 0; i < numValues; i++) {
             if (i == 0) {
                 dataSourceListBo.setAgentId(agentId);
                 dataSourceListBo.setTimestamp(timestamps.get(i));

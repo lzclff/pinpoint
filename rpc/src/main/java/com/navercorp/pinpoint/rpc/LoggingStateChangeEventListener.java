@@ -21,7 +21,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * @Author Taejin Koo
+ * @author Taejin Koo
  */
 public class LoggingStateChangeEventListener implements StateChangeEventListener<PinpointSocket> {
 
@@ -30,13 +30,8 @@ public class LoggingStateChangeEventListener implements StateChangeEventListener
     private final Logger logger = LoggerFactory.getLogger(this.getClass());
 
     @Override
-    public void eventPerformed(PinpointSocket pinpointSocket, SocketStateCode stateCode) throws Exception {
-        logger.info("eventPerformed socket:{}, stateCode:{}", pinpointSocket, stateCode);
-    }
-
-    @Override
-    public void exceptionCaught(PinpointSocket pinpointSocket, SocketStateCode stateCode, Throwable e) {
-        logger.warn("exceptionCaught message:{}, socket:{}, stateCode:{}", e.getMessage(), pinpointSocket, stateCode, e);
+    public void stateUpdated(PinpointSocket pinpointSocket, SocketStateCode updatedStateCode) {
+        logger.info("stateUpdated socket:{}, updatedStateCode:{}", pinpointSocket, updatedStateCode);
     }
 
 }

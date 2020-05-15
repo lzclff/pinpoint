@@ -1,11 +1,11 @@
 /*
- * Copyright 2017 NAVER Corp.
+ * Copyright 2019 NAVER Corp.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *     http://www.apache.org/licenses/LICENSE-2.0
+ * http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -27,6 +27,7 @@ import com.navercorp.pinpoint.rpc.util.ClientFactoryUtils;
 import com.navercorp.pinpoint.web.util.WebUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.util.StringUtils;
 
 import java.net.InetSocketAddress;
 import java.util.ArrayList;
@@ -53,17 +54,18 @@ public class ClusterConnector implements ClusterConnectionProvider {
     public void start() {
         logger.info("start() started.");
 
-        clientFactory.setTimeoutMillis(1000 * 5);
+        clientFactory.setWriteTimeoutMillis(1000 * 3);
+        clientFactory.setRequestTimeoutMillis(1000 * 5);
         clientFactory.setMessageListener(UnsupportOperationMessageListener.getInstance());
         clientFactory.addStateChangeEventListener(LoggingStateChangeEventListener.INSTANCE);
-        clientFactory.setProperties(Collections.EMPTY_MAP);
+        clientFactory.setProperties(Collections.emptyMap());
 
         ClusterOption clusterOption = new ClusterOption(true, WebUtils.getServerIdentifier(), Role.CALLER);
         clientFactory.setClusterOption(clusterOption);
 
         List<InetSocketAddress> connectHostList = parseConnectString(connectString);
         for (InetSocketAddress host : connectHostList) {
-            PinpointSocket pinpointSocket = ClientFactoryUtils.createPinpointClient(host, clientFactory);
+            PinpointSocket pinpointSocket = ClientFactoryUtils.createPinpointClient(host.getHostName(), host.getPort(), clientFactory);
             clusterSocketList.add(pinpointSocket);
         }
 
@@ -85,20 +87,29 @@ public class ClusterConnector implements ClusterConnectionProvider {
     private List<InetSocketAddress> parseConnectString(String connectString) {
         List<InetSocketAddress> serverAddressList = new ArrayList<>();
 
-        String[] hostsList = connectString.split(",");
+        final String[] hostsList = StringUtils.tokenizeToStringArray(connectString, ",");
         for (String host : hostsList) {
-            int portIndex = host.lastIndexOf(":");
-            if (portIndex >= 0 && portIndex < host.length() - 1) {
-                String ip = host.substring(0, portIndex);
-                int port = Integer.parseInt(host.substring(portIndex + 1));
 
-                serverAddressList.add(new InetSocketAddress(ip, port));
+            final InetSocketAddress inetSocketAddress = parseInetSocketAddress(host);
+            if (inetSocketAddress != null) {
+                serverAddressList.add(inetSocketAddress);
             } else {
                 logger.warn("Invalid address format({}, expected: 'ip:port')", host);
             }
         }
 
         return serverAddressList;
+    }
+
+    // for test
+    static InetSocketAddress parseInetSocketAddress(String host) {
+        final int portIndex = host.lastIndexOf(':');
+        if (portIndex >= 0 && portIndex < host.length() - 1) {
+            final String ip = host.substring(0, portIndex);
+            final int port = Integer.parseInt(host.substring(portIndex + 1));
+            return new InetSocketAddress(ip, port);
+        }
+        return null;
     }
 
     @Override

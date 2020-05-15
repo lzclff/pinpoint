@@ -1,5 +1,5 @@
 /*
- * Copyright 2017 NAVER Corp.
+ * Copyright 2018 NAVER Corp.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,9 +21,9 @@ import com.google.inject.Provider;
 import com.navercorp.pinpoint.common.util.JvmUtils;
 import com.navercorp.pinpoint.common.util.SystemPropertyKey;
 import com.navercorp.pinpoint.profiler.JvmInformation;
-import com.navercorp.pinpoint.profiler.monitor.codahale.AgentStatCollectorFactory;
-import com.navercorp.pinpoint.profiler.monitor.codahale.gc.GarbageCollector;
-import com.navercorp.pinpoint.profiler.monitor.codahale.gc.UnknownGarbageCollector;
+import com.navercorp.pinpoint.profiler.monitor.metric.gc.GarbageCollectorMetric;
+import com.navercorp.pinpoint.profiler.monitor.metric.gc.JvmGcType;
+import com.navercorp.pinpoint.profiler.monitor.metric.gc.UnknownGarbageCollectorMetric;
 
 /**
  * @author HyunGil Jeong
@@ -31,28 +31,21 @@ import com.navercorp.pinpoint.profiler.monitor.codahale.gc.UnknownGarbageCollect
 public class JvmInformationProvider implements Provider<JvmInformation> {
 
     private final String jvmVersion;
-    private final GarbageCollector garbageCollector;
+    private final GarbageCollectorMetric garbageCollectorMetric;
 
 
     @Inject
-    public JvmInformationProvider(AgentStatCollectorFactory garbageCollector) {
-        this(garbageCollector.getGarbageCollector());
+    public JvmInformationProvider(GarbageCollectorMetric garbageCollectorMetric) {
+        this.jvmVersion = JvmUtils.getSystemProperty(SystemPropertyKey.JAVA_VERSION);
+        this.garbageCollectorMetric = garbageCollectorMetric;
     }
 
     public JvmInformationProvider() {
-        this((GarbageCollector)null);
-    }
-
-    public JvmInformationProvider(GarbageCollector garbageCollector) {
-        this.jvmVersion = JvmUtils.getSystemProperty(SystemPropertyKey.JAVA_VERSION);
-        if (garbageCollector == null) {
-            this.garbageCollector = new UnknownGarbageCollector();
-        } else {
-            this.garbageCollector = garbageCollector;
-        }
+        this(new UnknownGarbageCollectorMetric());
     }
 
     public JvmInformation get() {
-        return new JvmInformation(this.jvmVersion, this.garbageCollector.getTypeCode());
+        JvmGcType gcType = garbageCollectorMetric.getGcType();
+        return new JvmInformation(jvmVersion, gcType);
     }
 }

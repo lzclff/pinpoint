@@ -24,6 +24,7 @@ import com.navercorp.pinpoint.bootstrap.plugin.jdbc.JdbcUrlParserV2;
 import com.navercorp.pinpoint.bootstrap.plugin.jdbc.StringMaker;
 import com.navercorp.pinpoint.bootstrap.plugin.jdbc.UnKnownDatabaseInfo;
 import com.navercorp.pinpoint.common.trace.ServiceType;
+import com.navercorp.pinpoint.common.util.StringUtils;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -51,7 +52,7 @@ public class CubridJdbcUrlParser implements JdbcUrlParserV2 {
     @Override
     public DatabaseInfo parse(String jdbcUrl) {
         if (jdbcUrl == null) {
-            logger.info("jdbcUrl may not be null");
+            logger.info("jdbcUrl");
             return UnKnownDatabaseInfo.INSTANCE;
         }
         final Matcher matcher = PREFIX_PATTERN.matcher(jdbcUrl);
@@ -83,23 +84,23 @@ public class CubridJdbcUrlParser implements JdbcUrlParserV2 {
 //        String pass = matcher.group(6);
 //        String prop = matcher.group(7);
 
-        int port = DEFAULT_PORT;
+//        int port = DEFAULT_PORT;
 
 //        String resolvedUrl;
 
-        if (host == null || host.length() == 0) {
+        if (StringUtils.isEmpty(host)) {
             host = DEFAULT_HOSTNAME;
         }
 
-        if (portString == null || portString.length() == 0) {
-            port = DEFAULT_PORT;
-        } else {
-            try {
-                port = Integer.parseInt(portString);
-            } catch (NumberFormatException e) {
-                logger.info("cubrid portString parsing fail. portString:{}, url:{}", portString, jdbcUrl);
-            }
-        }
+//        if (portString == null || portString.length() == 0) {
+//            port = DEFAULT_PORT;
+//        } else {
+//            try {
+//                port = Integer.parseInt(portString);
+//            } catch (NumberFormatException e) {
+//                logger.info("cubrid portString parsing fail. portString:{}, url:{}", portString, jdbcUrl);
+//            }
+//        }
 
         if (user == null) {
             user = DEFAULT_USER;

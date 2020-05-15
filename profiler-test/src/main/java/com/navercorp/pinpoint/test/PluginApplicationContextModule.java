@@ -1,5 +1,5 @@
 /*
- * Copyright 2017 NAVER Corp.
+ * Copyright 2019 NAVER Corp.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,18 +17,19 @@
 package com.navercorp.pinpoint.test;
 
 import com.google.inject.AbstractModule;
-import com.navercorp.pinpoint.bootstrap.context.ServerMetaDataHolder;
+import com.google.inject.Scopes;
+import com.google.inject.TypeLiteral;
+import com.google.inject.util.Providers;
+import com.navercorp.pinpoint.profiler.context.DefaultServerMetaDataRegistryService;
+import com.navercorp.pinpoint.profiler.context.ServerMetaDataRegistryService;
 import com.navercorp.pinpoint.profiler.context.module.SpanDataSender;
 import com.navercorp.pinpoint.profiler.context.module.StatDataSender;
 import com.navercorp.pinpoint.profiler.context.storage.StorageFactory;
+import com.navercorp.pinpoint.profiler.metadata.ApiMetaDataService;
 import com.navercorp.pinpoint.profiler.sender.DataSender;
 import com.navercorp.pinpoint.profiler.sender.EnhancedDataSender;
 import com.navercorp.pinpoint.profiler.util.RuntimeMXBeanUtils;
-import com.navercorp.pinpoint.rpc.client.PinpointClient;
 import com.navercorp.pinpoint.rpc.client.PinpointClientFactory;
-import com.navercorp.pinpoint.test.provder.NullPinpointClientFactoryProvider;
-import com.navercorp.pinpoint.test.provder.NullPinpointClientProvider;
-import org.apache.thrift.TBase;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -41,16 +42,12 @@ public class PluginApplicationContextModule extends AbstractModule {
 
     private final Logger logger = LoggerFactory.getLogger(this.getClass());
 
-    private TestableServerMetaDataListener serverMetaDataListener;
-    private TestTcpDataSender tcpDataSender;
-    private OrderedSpanRecorder orderedSpanRecorder;
-    private ServerMetaDataHolder serverMetaDataHolder;
-
     public PluginApplicationContextModule() {
     }
 
     @Override
     protected void configure() {
+        logger.info("configure {}", this.getClass().getSimpleName());
 
         final DataSender spanDataSender = newUdpSpanDataSender();
         logger.debug("spanDataSender:{}", spanDataSender);
@@ -60,68 +57,43 @@ public class PluginApplicationContextModule extends AbstractModule {
         logger.debug("statDataSender:{}", statDataSender);
         bind(DataSender.class).annotatedWith(StatDataSender.class).toInstance(statDataSender);
 
-        StorageFactory storageFactory = newStorageFactory(spanDataSender);
-        logger.debug("spanFactory:{}", spanDataSender);
-        bind(StorageFactory.class).toInstance(storageFactory);
+        bind(StorageFactory.class).to(TestSpanStorageFactory.class);
 
-        bind(PinpointClientFactory.class).toProvider(NullPinpointClientFactoryProvider.class);
-        bind(PinpointClient.class).toProvider(NullPinpointClientProvider.class);
+        bind(PinpointClientFactory.class).toProvider(Providers.of((PinpointClientFactory)null));
 
-        EnhancedDataSender enhancedDataSender = newTcpDataSender();
+        EnhancedDataSender<Object> enhancedDataSender = newTcpDataSender();
         logger.debug("enhancedDataSender:{}", enhancedDataSender);
-        bind(EnhancedDataSender.class).toInstance(enhancedDataSender);
+        TypeLiteral<EnhancedDataSender<Object>> dataSenderTypeLiteral = new TypeLiteral<EnhancedDataSender<Object>>() {};
+        bind(dataSenderTypeLiteral).toInstance(enhancedDataSender);
 
-        ServerMetaDataHolder serverMetaDataHolder = newServerMetaDataHolder();
-        logger.debug("serverMetaDataHolder:{}", serverMetaDataHolder);
-        bind(ServerMetaDataHolder.class).toInstance(serverMetaDataHolder);
-
+        ServerMetaDataRegistryService serverMetaDataRegistryService = newServerMetaDataRegistryService();
+        bind(ServerMetaDataRegistryService.class).toInstance(serverMetaDataRegistryService);
+        bind(ApiMetaDataService.class).toProvider(MockApiMetaDataServiceProvider.class).in(Scopes.SINGLETON);
     }
 
 
     private DataSender newUdpStatDataSender() {
-        return new ListenableDataSender<TBase<?, ?>>("StatDataSender");
+        return new ListenableDataSender<Object>("StatDataSender");
     }
 
     private DataSender newUdpSpanDataSender() {
 
-        ListenableDataSender<TBase<?, ?>> sender = new ListenableDataSender<TBase<?, ?>>("SpanDataSender");
+        ListenableDataSender<Object> sender = new ListenableDataSender<Object>("SpanDataSender");
         OrderedSpanRecorder orderedSpanRecorder = new OrderedSpanRecorder();
         sender.setListener(orderedSpanRecorder);
-        this.orderedSpanRecorder = orderedSpanRecorder;
         return sender;
     }
 
-    protected EnhancedDataSender newTcpDataSender() {
+    private EnhancedDataSender<Object> newTcpDataSender() {
         TestTcpDataSender tcpDataSender = new TestTcpDataSender();
-        this.tcpDataSender = tcpDataSender;
         return tcpDataSender;
     }
 
-
-    private ServerMetaDataHolder newServerMetaDataHolder() {
+    private ServerMetaDataRegistryService newServerMetaDataRegistryService() {
         List<String> vmArgs = RuntimeMXBeanUtils.getVmArgs();
-        ServerMetaDataHolder serverMetaDataHolder = new ResettableServerMetaDataHolder(vmArgs);
-        this.serverMetaDataListener = new TestableServerMetaDataListener();
-        this.serverMetaDataHolder = serverMetaDataHolder;
-        serverMetaDataHolder.addListener(this.serverMetaDataListener);
-        return serverMetaDataHolder;
+        ServerMetaDataRegistryService serverMetaDataRegistryService = new DefaultServerMetaDataRegistryService(vmArgs);
+        return serverMetaDataRegistryService;
     }
 
-    protected StorageFactory newStorageFactory(DataSender spanDataSender) {
-        logger.debug("newStorageFactory dataSender:{}", spanDataSender);
-        StorageFactory storageFactory = new SimpleSpanStorageFactory(spanDataSender);
-        return storageFactory;
-    }
 
-    public TestableServerMetaDataListener getServerMetaDataListener() {
-        return serverMetaDataListener;
-    }
-
-    public TestTcpDataSender getTcpDataSender() {
-        return tcpDataSender;
-    }
-
-    public OrderedSpanRecorder getOrderedSpanRecorder() {
-        return orderedSpanRecorder;
-    }
 }

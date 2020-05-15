@@ -16,16 +16,14 @@
 
 package com.navercorp.pinpoint.profiler.plugin;
 
-import com.navercorp.pinpoint.bootstrap.config.ProfilerConfig;
-import com.navercorp.pinpoint.bootstrap.instrument.DynamicTransformTrigger;
-import com.navercorp.pinpoint.bootstrap.instrument.InstrumentEngine;
 import com.navercorp.pinpoint.bootstrap.plugin.ApplicationTypeDetector;
+import com.navercorp.pinpoint.bootstrap.plugin.ProfilerPlugin;
+import com.navercorp.pinpoint.common.trace.ServiceType;
+import com.navercorp.pinpoint.common.util.Assert;
+import com.navercorp.pinpoint.loader.plugins.profiler.ProfilerPluginLoader;
 import com.navercorp.pinpoint.bootstrap.plugin.jdbc.JdbcUrlParserV2;
-import com.navercorp.pinpoint.profiler.context.module.BootstrapJarPaths;
 
 import java.lang.instrument.ClassFileTransformer;
-import java.lang.instrument.Instrumentation;
-import java.net.URL;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -34,81 +32,33 @@ import java.util.List;
  */
 public class DefaultPluginContextLoadResult implements PluginContextLoadResult {
 
-    private final URL[] pluginJars;
-    private final Instrumentation instrumentation;
-    private final InstrumentEngine instrumentEngine;
-    private final List<String> bootstrapJarPaths;
-    private final ProfilerConfig profilerConfig;
-    private final DynamicTransformTrigger dynamicTransformTrigger;
+    private final PluginsSetupResult pluginsSetupResult;
 
-    private List<SetupResult> lazy;
-
-    public DefaultPluginContextLoadResult(ProfilerConfig profilerConfig, DynamicTransformTrigger dynamicTransformTrigger, Instrumentation instrumentation, InstrumentEngine instrumentEngine,
-                                          @BootstrapJarPaths List<String> bootstrapJarPaths, URL[] pluginJars) {
-        if (profilerConfig == null) {
-            throw new NullPointerException("profilerConfig must not be null");
-        }
-        if (dynamicTransformTrigger == null) {
-            throw new NullPointerException("dynamicTransformTrigger must not be null");
-        }
-        if (instrumentation == null) {
-            throw new NullPointerException("instrumentation must not be null");
-        }
-        if (instrumentEngine == null) {
-            throw new NullPointerException("instrumentEngine must not be null");
-        }
-        if (bootstrapJarPaths == null) {
-            throw new NullPointerException("bootstrapJarPaths must not be null");
-        }
-        if (pluginJars == null) {
-            throw new NullPointerException("pluginJars must not be null");
-        }
-        this.profilerConfig = profilerConfig;
-        this.dynamicTransformTrigger = dynamicTransformTrigger;
-
-        this.pluginJars = pluginJars;
-        this.instrumentation = instrumentation;
-        this.instrumentEngine = instrumentEngine;
-        this.bootstrapJarPaths = bootstrapJarPaths;
-    }
-
-
-    private List<SetupResult> getProfilerPluginContextList() {
-        if (lazy == null) {
-            lazy = load();
-        }
-        return lazy;
-    }
-
-
-    private List<SetupResult> load() {
-        PluginSetup pluginSetup = new DefaultPluginSetup(profilerConfig, instrumentEngine, dynamicTransformTrigger);
-        final ProfilerPluginLoader loader = new ProfilerPluginLoader(profilerConfig, pluginSetup, instrumentation, instrumentEngine, bootstrapJarPaths);
-        List<SetupResult> load = loader.load(pluginJars);
-        return load;
+    public DefaultPluginContextLoadResult(ProfilerPluginContextLoader profilerPluginContextLoader, ClassLoader pluginClassLoader) {
+        Assert.requireNonNull(profilerPluginContextLoader, "profilerPluginConfigurer");
+        Assert.requireNonNull(pluginClassLoader, "pluginClassLoader");
+        ProfilerPluginLoader profilerPluginLoader = new ProfilerPluginLoader();
+        List<ProfilerPlugin> profilerPlugins = profilerPluginLoader.load(pluginClassLoader);
+        this.pluginsSetupResult = profilerPluginContextLoader.load(profilerPlugins);
     }
 
     @Override
     public List<ClassFileTransformer> getClassFileTransformer() {
         // TODO Need plugin context level grouping
-        List<SetupResult> profilerPluginContextList = getProfilerPluginContextList();
-        List<ClassFileTransformer> transformerList = new ArrayList<ClassFileTransformer>();
-        for (SetupResult pluginContext : profilerPluginContextList) {
+        final List<ClassFileTransformer> transformerList = new ArrayList<ClassFileTransformer>();
+        for (PluginSetupResult pluginContext : pluginsSetupResult.getPluginSetupResults()) {
             List<ClassFileTransformer> classTransformerList = pluginContext.getClassTransformerList();
             transformerList.addAll(classTransformerList);
         }
         return transformerList;
     }
 
-
-
     @Override
     public List<ApplicationTypeDetector> getApplicationTypeDetectorList() {
 
-        List<ApplicationTypeDetector> registeredDetectors = new ArrayList<ApplicationTypeDetector>();
+        final List<ApplicationTypeDetector> registeredDetectors = new ArrayList<ApplicationTypeDetector>();
 
-        List<SetupResult> profilerPluginContextList = getProfilerPluginContextList();
-        for (SetupResult context : profilerPluginContextList) {
+        for (PluginSetupResult context : pluginsSetupResult.getPluginSetupResults()) {
             List<ApplicationTypeDetector> applicationTypeDetectors = context.getApplicationTypeDetectors();
             registeredDetectors.addAll(applicationTypeDetectors);
         }
@@ -117,11 +67,15 @@ public class DefaultPluginContextLoadResult implements PluginContextLoadResult {
     }
 
     @Override
-    public List<JdbcUrlParserV2> getJdbcUrlParserList() {
-        List<JdbcUrlParserV2> result = new ArrayList<JdbcUrlParserV2>();
+    public ServiceType getApplicationType() {
+        return pluginsSetupResult.getApplicationType();
+    }
 
-        List<SetupResult> profilerPluginContextList = getProfilerPluginContextList();
-        for (SetupResult context : profilerPluginContextList) {
+    @Override
+    public List<JdbcUrlParserV2> getJdbcUrlParserList() {
+        final List<JdbcUrlParserV2> result = new ArrayList<JdbcUrlParserV2>();
+
+        for (PluginSetupResult context : pluginsSetupResult.getPluginSetupResults()) {
             List<JdbcUrlParserV2> jdbcUrlParserList = context.getJdbcUrlParserList();
             result.addAll(jdbcUrlParserList);
         }

@@ -1,5 +1,5 @@
 /*
- * Copyright 2017 NAVER Corp.
+ * Copyright 2019 NAVER Corp.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,18 +16,11 @@
 
 package com.navercorp.pinpoint.profiler.metadata;
 
-import com.navercorp.pinpoint.bootstrap.context.MethodDescriptor;
-import com.navercorp.pinpoint.profiler.context.DefaultMethodDescriptor;
 import com.navercorp.pinpoint.profiler.sender.EnhancedDataSender;
-import org.apache.thrift.TBase;
 import org.junit.Assert;
 import org.junit.Test;
 
-import static org.junit.Assert.*;
-import static org.mockito.Matchers.any;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.*;
 
 /**
  * @author Woonduk Kang(emeroad)
@@ -36,19 +29,20 @@ public class DefaultStringMetaDataServiceTest {
 
     @Test
     public void cacheString() throws Exception {
-        EnhancedDataSender dataSender = mock(EnhancedDataSender.class);
-        StringMetaDataService stringMetaDataService = new DefaultStringMetaDataService("agentId", System.currentTimeMillis(), dataSender);
+        EnhancedDataSender<Object> dataSender = mock(EnhancedDataSender.class);
+        SimpleCache<String> stringCache = new SimpleCache<String>(new SimpleCache.ZigZagTransformer());
+        StringMetaDataService stringMetaDataService = new DefaultStringMetaDataService(dataSender, stringCache);
 
         String str = "test";
 
         int first = stringMetaDataService.cacheString(str);
 
         Assert.assertNotEquals("not exist", first, 0);
-        verify(dataSender, times(1)).request(any(TBase.class));
+        verify(dataSender, times(1)).request(any(StringMetaData.class));
 
         int second = stringMetaDataService.cacheString(str);
         Assert.assertEquals("check cache", first, second);
-        verify(dataSender, times(1)).request(any(TBase.class));
+        verify(dataSender, times(1)).request(any(StringMetaData.class));
     }
 
 }

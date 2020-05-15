@@ -16,7 +16,8 @@
 
 package com.navercorp.pinpoint.web.vo.stat.chart;
 
-import com.google.common.math.DoubleMath;
+import com.google.common.math.Stats;
+import org.apache.commons.lang3.RandomUtils;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -64,10 +65,10 @@ public abstract class DownSamplerTestBase<T extends Number & Comparable<? super 
     @Test
     public void sampler_should_sample_correctly() {
         // Given
-        final List<T> samples = createSamples(RANDOM.nextInt(20) + 1);
+        final List<T> samples = createSamples(RandomUtils.nextInt(1, 21));
         final T expectedMin = Collections.min(samples);
         final T expectedMax = Collections.max(samples);
-        final double expectedMean = DoubleMath.mean(samples);
+        final double expectedMean = Stats.meanOf(samples);
         // When
         T min = sampler.sampleMin(samples);
         T max = sampler.sampleMax(samples);
@@ -102,7 +103,7 @@ public abstract class DownSamplerTestBase<T extends Number & Comparable<? super 
 
     private List<T> createSamples(int sampleCount) {
         List<T> samples = new ArrayList<>(sampleCount);
-        for (int i = 0; i < sampleCount; ++i) {
+        for (int i = 0; i < sampleCount; i++) {
             samples.add(createSample());
         }
         return samples;

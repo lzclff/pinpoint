@@ -41,20 +41,14 @@ public class ApplicationTimeHistogramBuilder {
 
 
     public ApplicationTimeHistogramBuilder(Application application, Range range) {
-        if (application == null) {
-            throw new NullPointerException("application must not be null");
-        }
-        if (range == null) {
-            throw new NullPointerException("range must not be null");
-        }
-        this.application = application;
-        this.range = range;
+        this.application = Objects.requireNonNull(application, "application");
+        this.range = Objects.requireNonNull(range, "range");
         this.window = new TimeWindow(range, TimeWindowDownSampler.SAMPLER);
     }
 
     public ApplicationTimeHistogram build(List<ResponseTime> responseHistogramList) {
         if (responseHistogramList == null) {
-            throw new NullPointerException("responseHistogramList must not be null");
+            throw new NullPointerException("responseHistogramList");
         }
 
         Map<Long, TimeHistogram> applicationLevelHistogram = new HashMap<>();
@@ -120,17 +114,13 @@ public class ApplicationTimeHistogramBuilder {
         for (TimeHistogram timeHistogram : histogramList) {
             long time = window.refineTimestamp(timeHistogram.getTimeStamp());
 
-            TimeHistogram windowHistogram = resultMap.get(time);
-            if (windowHistogram == null) {
-                windowHistogram = new TimeHistogram(application.getServiceType(), time);
-                resultMap.put(time, windowHistogram);
-            }
+            TimeHistogram windowHistogram = resultMap.computeIfAbsent(time, t -> new TimeHistogram(application.getServiceType(), t));
             windowHistogram.add(timeHistogram);
         }
 
 
         List<TimeHistogram> resultList = new ArrayList<>(resultMap.values());
-        Collections.sort(resultList, TimeHistogram.TIME_STAMP_ASC_COMPARATOR);
+        resultList.sort(TimeHistogram.TIME_STAMP_ASC_COMPARATOR);
         return resultList;
     }
 

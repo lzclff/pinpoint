@@ -1,11 +1,11 @@
 /*
- * Copyright 2017 NAVER Corp.
+ * Copyright 2018 NAVER Corp.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *     http://www.apache.org/licenses/LICENSE-2.0
+ * http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -17,30 +17,35 @@
 package com.navercorp.pinpoint.profiler.receiver.service;
 
 import com.navercorp.pinpoint.common.util.JvmUtils;
-import com.navercorp.pinpoint.profiler.context.active.ActiveTraceInfo;
-import com.navercorp.pinpoint.profiler.context.active.ActiveTraceLocator;
+import com.navercorp.pinpoint.profiler.context.active.ActiveTraceSnapshot;
+import com.navercorp.pinpoint.profiler.context.thrift.ThreadDumpThriftMessageConverter;
+import com.navercorp.pinpoint.profiler.monitor.metric.deadlock.ThreadDumpMetricSnapshot;
 import com.navercorp.pinpoint.profiler.receiver.ProfilerRequestCommandService;
-import com.navercorp.pinpoint.profiler.util.ActiveThreadDumpUtils;
 import com.navercorp.pinpoint.profiler.util.ThreadDumpUtils;
 import com.navercorp.pinpoint.thrift.dto.command.TActiveThreadDump;
 import com.navercorp.pinpoint.thrift.dto.command.TCmdActiveThreadDump;
 import com.navercorp.pinpoint.thrift.dto.command.TCmdActiveThreadDumpRes;
 import com.navercorp.pinpoint.thrift.dto.command.TThreadDump;
+import com.navercorp.pinpoint.thrift.io.TCommandType;
 import org.apache.thrift.TBase;
 
+import java.lang.management.ThreadInfo;
 import java.util.ArrayList;
-import java.util.Collections;
+import java.util.Collection;
 import java.util.List;
 
 /**
- * @Author Taejin Koo
+ * @author Taejin Koo
  */
-public class ActiveThreadDumpService implements ProfilerRequestCommandService {
+public class ActiveThreadDumpService implements ProfilerRequestCommandService<TBase<?, ?>, TBase<?, ?>> {
 
-    private final ActiveTraceLocator activeTraceLocator;
+    static final String JAVA = "JAVA";
 
-    public ActiveThreadDumpService(ActiveTraceLocator activeTraceLocator) {
-        this.activeTraceLocator = activeTraceLocator;
+    private final ActiveThreadDumpCoreService activeThreadDumpCoreService;
+    private final ThreadDumpThriftMessageConverter threadDumpThriftMessageConverter = new ThreadDumpThriftMessageConverter();
+
+    public ActiveThreadDumpService(ActiveThreadDumpCoreService activeThreadDumpCoreService) {
+        this.activeThreadDumpCoreService = activeThreadDumpCoreService;
     }
 
     @Override
@@ -50,85 +55,46 @@ public class ActiveThreadDumpService implements ProfilerRequestCommandService {
         List<TActiveThreadDump> activeThreadDumpList = getActiveThreadDumpList(request);
 
         TCmdActiveThreadDumpRes response = new TCmdActiveThreadDumpRes();
-        response.setType("JAVA");
+        response.setType(JAVA);
         response.setSubType(JvmUtils.getType().name());
         response.setVersion(JvmUtils.getVersion().name());
         response.setThreadDumps(activeThreadDumpList);
         return response;
     }
 
-    private List<TActiveThreadDump> getActiveThreadDumpList(TCmdActiveThreadDump request) {
-        List<ActiveTraceInfo> activeTraceInfoList = activeTraceLocator.collect();
+    private List<TActiveThreadDump> getActiveThreadDumpList(TCmdActiveThreadDump tRequest) {
 
-        int limit = request.getLimit();
-        if (limit > 0) {
-            Collections.sort(activeTraceInfoList, ActiveThreadDumpUtils.getActiveTraceInfoComparator());
-        } else {
-            limit = Integer.MAX_VALUE;
-        }
+        final ThreadDumpRequest request = ThreadDumpRequest.create(tRequest);
 
-        return getActiveThreadDumpList(request, limit, activeTraceInfoList);
+        Collection<ThreadDump> activeThreadDumpList = activeThreadDumpCoreService.getActiveThreadDumpList(request);
+
+        return toTActiveThreadDump(activeThreadDumpList);
     }
 
-    private List<TActiveThreadDump> getActiveThreadDumpList(TCmdActiveThreadDump request, int limit, List<ActiveTraceInfo> activeTraceInfoList) {
-        int targetThreadNameListSize = request.getThreadNameListSize();
-        int localTraceIdListSize = request.getLocalTraceIdListSize();
-        boolean filterEnable = (targetThreadNameListSize + localTraceIdListSize) > 0;
 
-        List<TActiveThreadDump> activeThreadDumpList = new ArrayList<TActiveThreadDump>(Math.min(limit, activeTraceInfoList.size()));
-        if (filterEnable) {
-            for (ActiveTraceInfo activeTraceInfo : activeTraceInfoList) {
-                if (!ActiveThreadDumpUtils.isTraceThread(activeTraceInfo, request.getThreadNameList(), request.getLocalTraceIdList())) {
-                    continue;
-                }
+    private List<TActiveThreadDump> toTActiveThreadDump(Collection<ThreadDump> activeTraceInfoList) {
 
-                TActiveThreadDump activeThreadDump = createActiveThreadDump(activeTraceInfo);
-                if (activeThreadDump != null) {
-                    if (limit > activeThreadDumpList.size()) {
-                        activeThreadDumpList.add(activeThreadDump);
-                    }
-                }
-            }
-        } else {
-            for (ActiveTraceInfo activeTraceInfo : activeTraceInfoList) {
-                TActiveThreadDump activeThreadDump = createActiveThreadDump(activeTraceInfo);
-                if (activeThreadDump != null) {
-                    if (limit > activeThreadDumpList.size()) {
-                        activeThreadDumpList.add(activeThreadDump);
-                    }
-                }
-            }
+        final List<TActiveThreadDump> result = new ArrayList<TActiveThreadDump>(activeTraceInfoList.size());
+        for (ThreadDump threadDump : activeTraceInfoList) {
+            TActiveThreadDump tActiveThreadDump = createTActiveThreadDump(threadDump);
+            result.add(tActiveThreadDump);
         }
 
-        return activeThreadDumpList;
+        return result;
     }
 
-    private TActiveThreadDump createActiveThreadDump(ActiveTraceInfo activeTraceInfo) {
-        Thread thread = activeTraceInfo.getThread();
-        TThreadDump threadDump = createThreadDump(thread, true);
-        if (threadDump != null) {
-            return createTActiveThreadDump(activeTraceInfo, threadDump);
-        }
-        return null;
-    }
 
-    private TThreadDump createThreadDump(Thread thread, boolean isIncludeStackTrace) {
-        if (thread == null) {
-            return null;
-        }
+    private TActiveThreadDump createTActiveThreadDump(ThreadDump threadDump) {
+        final ActiveTraceSnapshot activeTraceInfo = threadDump.getActiveTraceSnapshot();
+        final ThreadInfo threadInfo = threadDump.getThreadInfo();
 
-        if (isIncludeStackTrace) {
-            return ThreadDumpUtils.createTThreadDump(thread);
-        } else {
-            return ThreadDumpUtils.createTThreadDump(thread, 0);
-        }
-    }
+        final ThreadDumpMetricSnapshot threadDumpMetricSnapshot = ThreadDumpUtils.createThreadDump(threadInfo);
+        final TThreadDump tThreadDump = this.threadDumpThriftMessageConverter.toMessage(threadDumpMetricSnapshot);
 
-    private TActiveThreadDump createTActiveThreadDump(ActiveTraceInfo activeTraceInfo, TThreadDump threadDump) {
         TActiveThreadDump activeThreadDump = new TActiveThreadDump();
         activeThreadDump.setStartTime(activeTraceInfo.getStartTime());
-        activeThreadDump.setLocalTraceId(activeTraceInfo.getLocalTraceId());
-        activeThreadDump.setThreadDump(threadDump);
+        activeThreadDump.setLocalTraceId(activeTraceInfo.getLocalTransactionId());
+        activeThreadDump.setThreadDump(tThreadDump);
 
         if (activeTraceInfo.isSampled()) {
             activeThreadDump.setSampled(true);
@@ -139,8 +105,8 @@ public class ActiveThreadDumpService implements ProfilerRequestCommandService {
     }
 
     @Override
-    public Class<? extends TBase> getCommandClazz() {
-        return TCmdActiveThreadDump.class;
+    public short getCommandServiceCode() {
+        return TCommandType.ACTIVE_THREAD_DUMP.getCode();
     }
 
 }

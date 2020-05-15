@@ -28,23 +28,16 @@ public interface Trace extends StackOperation {
     // ----------------------------------------------
     // activeTrace related api
     // TODO extract interface???
+    @InterfaceAudience.Private
     long getId();
 
+    @InterfaceAudience.Private
     long getStartTime();
-
-    Thread getBindThread();
 
     //------------------------------------------------
 
     TraceId getTraceId();
 
-    AsyncTraceId getAsyncTraceId();
-
-    /**
-     * internal experimental api
-     */
-    @InterfaceAudience.LimitedPrivate("vert.x")
-    AsyncTraceId getAsyncTraceId(boolean closeable);
 
     boolean canSampled();
 
@@ -55,14 +48,10 @@ public interface Trace extends StackOperation {
     SpanRecorder getSpanRecorder();
     
     SpanEventRecorder currentSpanEventRecorder();
-    
-    void close();
 
-    /**
-     * internal experimental api
-     */
-    @InterfaceAudience.LimitedPrivate("vert.x")
-    void flush();
+    boolean isClosed();
+
+    void close();
 
     TraceScope getScope(String name);
 

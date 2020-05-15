@@ -16,18 +16,8 @@
 
 package com.navercorp.pinpoint.rpc.client;
 
-import com.navercorp.pinpoint.rpc.*;
-import com.navercorp.pinpoint.rpc.cluster.ClusterOption;
-import com.navercorp.pinpoint.rpc.packet.RequestPacket;
-import com.navercorp.pinpoint.rpc.stream.*;
-import com.navercorp.pinpoint.rpc.util.AssertUtils;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import java.net.SocketAddress;
-import java.util.List;
-import java.util.concurrent.CopyOnWriteArrayList;
-
+import com.navercorp.pinpoint.rpc.Future;
+import com.navercorp.pinpoint.rpc.PinpointSocket;
 
 /**
  * @author emeroad
@@ -50,8 +40,6 @@ public interface PinpointClient extends PinpointSocket {
     void sendSync(byte[] bytes) ;
 
     Future sendAsync(byte[] bytes);
-
-    StreamChannelContext findStreamChannel(int streamChannelId);
 
     /**
      * write ping packet on tcp channel

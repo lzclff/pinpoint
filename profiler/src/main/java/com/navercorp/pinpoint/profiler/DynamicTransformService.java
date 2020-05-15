@@ -20,14 +20,13 @@ import java.lang.instrument.ClassFileTransformer;
 import java.lang.instrument.Instrumentation;
 import java.lang.instrument.UnmodifiableClassException;
 
-import com.google.inject.Inject;
 import com.navercorp.pinpoint.bootstrap.instrument.RequestHandle;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.navercorp.pinpoint.bootstrap.instrument.DynamicTransformRequestListener;
 import com.navercorp.pinpoint.bootstrap.instrument.DynamicTransformTrigger;
-import com.navercorp.pinpoint.common.util.Asserts;
+import com.navercorp.pinpoint.common.util.Assert;
 
 /**
  * @author emeroad
@@ -40,17 +39,9 @@ public class DynamicTransformService implements DynamicTransformTrigger {
 
     private DynamicTransformRequestListener dynamicTransformRequestListener;
 
-    @Inject
-    public DynamicTransformService(Instrumentation instrumentation, ClassFileTransformerDispatcher listener) {
-        this(instrumentation, (DynamicTransformRequestListener)listener);
-    }
-
     public DynamicTransformService(Instrumentation instrumentation, DynamicTransformRequestListener listener) {
-        Asserts.notNull(instrumentation, "instrumentation");
-        Asserts.notNull(listener, "listener");
-
-        this.instrumentation = instrumentation;
-        this.dynamicTransformRequestListener = listener;
+        this.instrumentation = Assert.requireNonNull(instrumentation, "instrumentation");
+        this.dynamicTransformRequestListener = Assert.requireNonNull(listener, "listener");
     }
 
     @Override
@@ -97,7 +88,7 @@ public class DynamicTransformService implements DynamicTransformTrigger {
 
     public void setTransformRequestEventListener(DynamicTransformRequestListener retransformEventListener) {
         if (retransformEventListener == null) {
-            throw new NullPointerException("dynamicTransformRequestListener must not be null");
+            throw new NullPointerException("dynamicTransformRequestListener");
         }
         this.dynamicTransformRequestListener = retransformEventListener;
     }
